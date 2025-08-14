@@ -15,6 +15,7 @@ const corsOptions = {
 		"http://localhost:5173",
 		"https://gidswap.com",
 		"https://www.gidswap.com",
+		"https://gidswapv2-indol.vercel.app",
 		"https://gidswapv2.vercel.app"
 	],
 	credentials: true,
