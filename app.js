@@ -39,10 +39,11 @@ app.get("/api/ping", (req, res) => {
 const authRoutes = require("./routes/authRoutes");
 const fixedFloatRoutes = require("./routes/fixFloatRoutes");
 const authMiddlewares = require("./middlewares/authMiddlewares");
+const payCrestRoutes = require("./routes/payCrestRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
-
+app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 // Self-ping function to keep server alive
 const selfPing = async () => {
 	try {

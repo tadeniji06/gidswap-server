@@ -1,5 +1,3 @@
-// fixed float controller
-
 const axios = require("axios");
 const crypto = require("crypto");
 require("dotenv").config();
@@ -23,7 +21,6 @@ const headersFor = (payload = {}) => ({
 	"X-API-SIGN": signPayload(payload),
 });
 
-
 module.exports = {
 	createOrder: async (payload) => {
 		const res = await axios.post(`${BASE_URL}/create`, payload, {
@@ -39,15 +36,15 @@ module.exports = {
 		return res.data;
 	},
 
-	checkStatus: async (orderId) => {
-		const res = await axios.get(`${BASE_URL}/order/${orderId}`, {
-			headers: {
-				Accept: "application/json",
-				"X-API-KEY": API_KEY,
-			},
-		});
-		return res.data;
-	},
+	// checkStatus: async (orderId) => {
+	// 	const res = await axios.get(`${BASE_URL}/order/${orderId}`, {
+	// 		headers: {
+	// 			Accept: "application/json",
+	// 			"X-API-KEY": API_KEY,
+	// 		},
+	// 	});
+	// 	return res.data;
+	// },
 
 	getCurrencies: async () => {
 		const res = await axios.post(

@@ -36,25 +36,22 @@ router.post("/rate", async (req, res) => {
 	}
 });
 
-router.get("/status/:id", async (req, res) => {
-	const { id } = req.params;
-	if (!id)
-		return res.status(400).json({ message: "Order ID required" });
+// router.get("/status/:id", async (req, res) => {
+// 	const { id } = req.params;
+// 	if (!id)
+// 		return res.status(400).json({ message: "Order ID required" });
 
-	try {
-		const result = await checkStatus(id);
-		res.json(result);
-	} catch (err) {
-		console.error(
-			"Status Error:",
-			err?.response?.data || err.message
-		);
-		res.status(500).json({
-			error: "Failed to get status",
-			details: err.response?.data,
-		});
-	}
-});
+// 	try {
+// 		const result = await checkStatus(id);
+// 		res.json(result);
+// 	} catch (err) {
+// 		console.error(err);
+// 		res.status(500).json({
+// 			error: "Failed to get status",
+// 			details: err
+// 		});
+// 	}
+// });
 
 router.get("/currencies", async (req, res) => {
 	try {

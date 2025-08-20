@@ -55,6 +55,34 @@ exports.signUp = async (req, res) => {
 	}
 };
 
+// CHECK EMAIL EXISTS Controller
+exports.checkEmailExists = async (req, res) => {
+	try {
+		const { email } = req.body;
+
+		if (!email) {
+			return res.status(400).json({ 
+				message: "Email is required.",
+				exists: false 
+			});
+		}
+
+		// Check if user exists
+		const existingUser = await User.findOne({ email });
+
+		res.status(200).json({
+			exists: !!existingUser // converts to boolean
+		});
+	} catch (error) {
+		console.error("Check email error:", error);
+		res.status(500).json({ 
+			message: "Internal server error.",
+			exists: false 
+		});
+	}
+};
+
+
 // LOGIN Controller
 exports.login = async (req, res) => {
 	try {
