@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const emailjs = require("@emailjs/nodejs");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -61,9 +62,9 @@ exports.checkEmailExists = async (req, res) => {
 		const { email } = req.body;
 
 		if (!email) {
-			return res.status(400).json({ 
+			return res.status(400).json({
 				message: "Email is required.",
-				exists: false 
+				exists: false,
 			});
 		}
 
@@ -71,17 +72,16 @@ exports.checkEmailExists = async (req, res) => {
 		const existingUser = await User.findOne({ email });
 
 		res.status(200).json({
-			exists: !!existingUser // converts to boolean
+			exists: !!existingUser, // converts to boolean
 		});
 	} catch (error) {
 		console.error("Check email error:", error);
-		res.status(500).json({ 
+		res.status(500).json({
 			message: "Internal server error.",
-			exists: false 
+			exists: false,
 		});
 	}
 };
-
 
 // LOGIN Controller
 exports.login = async (req, res) => {
@@ -127,5 +127,106 @@ exports.login = async (req, res) => {
 	} catch (error) {
 		console.error("Login error:", error);
 		res.status(500).json({ message: "Internal server error." });
+	}
+};
+// store OTPs in-memory for demo (better: use Redis or DB with expiry)
+const otpStore = {};
+
+// Generate 6-digit OTP
+const generateOtp = () =>
+	Math.floor(100000 + Math.random() * 900000).toString();
+
+// REQUEST OTP
+exports.requestOtp = async (req, res) => {
+	try {
+		const { email } = req.body;
+		if (!email)
+			return res.status(400).json({ message: "Email is required." });
+
+		const user = await User.findOne({ email });
+		if (!user)
+			return res.status(404).json({ message: "User not found." });
+
+		const otp = generateOtp();
+		otpStore[email] = {
+			code: otp,
+			expiresAt: Date.now() + 5 * 60 * 1000,
+		}; // 5 mins
+
+		// send email via EmailJS
+		await emailjs.send(
+			process.env.EMAIL_JS_SERVICE_ID,
+			process.env.EMAIL_JS_TEMPLATE_ID,
+			{ otp_code: otp, to_email: email },
+			{
+				publicKey: process.env.EMAIL_JS_PUBLIC_KEY,
+				privateKey: process.env.EMAIL_JS_PRIVATE_KEY,
+			}
+		);
+
+		res.json({ message: "OTP sent to email." });
+	} catch (error) {
+		console.error("OTP error:", error);
+		res.status(500).json({ message: "Internal server error." });
+	}
+};
+
+// VERIFY OTP
+exports.verifyOtp = (req, res) => {
+	try {
+		const { email, otp } = req.body;
+		if (!email || !otp)
+			return res
+				.status(400)
+				.json({ message: "Email and OTP required." });
+
+		const record = otpStore[email];
+		if (!record)
+			return res
+				.status(400)
+				.json({ message: "No OTP requested for this email." });
+
+		if (Date.now() > record.expiresAt) {
+			delete otpStore[email];
+			return res.status(400).json({ message: "OTP expired." });
+		}
+
+		if (record.code !== otp)
+			return res.status(400).json({ message: "Invalid OTP." });
+
+		// OTP verified — issue short-lived reset token
+		const resetToken = jwt.sign({ email }, JWT_SECRET, {
+			expiresIn: "15m",
+		});
+
+		res.json({ message: "OTP verified.", resetToken });
+	} catch (error) {
+		console.error("Verify OTP error:", error);
+		res.status(500).json({ message: "Internal server error." });
+	}
+};
+
+// RESET PASSWORD
+exports.resetPassword = async (req, res) => {
+	try {
+		const { resetToken, newPassword } = req.body;
+		if (!resetToken || !newPassword) {
+			return res
+				.status(400)
+				.json({ message: "Token and new password required." });
+		}
+
+		const decoded = jwt.verify(resetToken, JWT_SECRET);
+		const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+		await User.updateOne(
+			{ email: decoded.email },
+			{ password: hashedPassword }
+		);
+
+		res.json({ message: "Password reset successful." });
+	} catch (error) {
+		console.error("Reset password error:", error);
+		res.status(500).json({ message: "Invalid or expired token." });
 	}
 };

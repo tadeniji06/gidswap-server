@@ -64,16 +64,15 @@ const selfPing = async () => {
 	}
 };
 
-// Start self-ping interval (every 2 minutes = 120000ms)
+// Start self-ping interval 
 const startSelfPing = () => {
 	// Initial ping after 30 seconds
 	setTimeout(() => {
 		selfPing();
-		// Then ping every 2 minutes
 		setInterval(selfPing, 2 * 60 * 1000);
 	}, 30000);
 
-	console.log("🔄 Self-ping mechanism started (every 2 minutes)");
+	console.log("🔄 Self-ping mechanism started");
 };
 
 // Start the self-ping when the server starts
