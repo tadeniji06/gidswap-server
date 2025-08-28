@@ -40,8 +40,10 @@ const authRoutes = require("./routes/authRoutes");
 const fixedFloatRoutes = require("./routes/fixFloatRoutes");
 const authMiddlewares = require("./middlewares/authMiddlewares");
 const payCrestRoutes = require("./routes/payCrestRoutes");
+const userRoutes = require("./routes/userRoutes");
 
 app.use("/api/auth", authRoutes);
+app.use("/api/user", userRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 // Self-ping function to keep server alive
@@ -64,7 +66,7 @@ const selfPing = async () => {
 	}
 };
 
-// Start self-ping interval 
+// Start self-ping interval
 const startSelfPing = () => {
 	// Initial ping after 30 seconds
 	setTimeout(() => {

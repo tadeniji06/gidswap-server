@@ -9,7 +9,6 @@ module.exports = async (req, res, next) => {
 			return res.status(401).json({ message: "Not authorized" });
 
 		const decoded = jwt.verify(token, JWT_SECRET);
-		// console.log(`JWT`, JWT_SECRET);
 		const user = await User.findById(decoded.userId);
 		if (!user)
 			return res.status(401).json({ message: "User not found" });
