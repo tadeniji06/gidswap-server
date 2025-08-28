@@ -7,7 +7,6 @@ module.exports = async (req, res, next) => {
 		const token = req.headers.authorization?.split(" ")[1];
 		if (!token)
 			return res.status(401).json({ message: "Not authorized" });
-		// console.log("JWT_SECRET used in middleware:", JWT_SECRET);
 
 		const decoded = jwt.verify(token, JWT_SECRET);
 		// console.log(`JWT`, JWT_SECRET);

@@ -36,16 +36,6 @@ module.exports = {
 		return res.data;
 	},
 
-	// checkStatus: async (orderId) => {
-	// 	const res = await axios.get(`${BASE_URL}/order/${orderId}`, {
-	// 		headers: {
-	// 			Accept: "application/json",
-	// 			"X-API-KEY": API_KEY,
-	// 		},
-	// 	});
-	// 	return res.data;
-	// },
-
 	getCurrencies: async () => {
 		const res = await axios.post(
 			`${BASE_URL}/ccies`,
