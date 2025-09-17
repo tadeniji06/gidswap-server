@@ -1,26 +1,29 @@
 const express = require("express");
 const router = express.Router();
+const passport = require("../config/passport");
 const authControllers = require("../controllers/authControllers");
 
-// login
+// --- Regular auth routes ---
 router.post("/login", authControllers.login);
-
-// signup
 router.post("/signup", authControllers.signUp);
-
-// check email
 router.post("/check-email", authControllers.checkEmailExists);
-
-// request OTP
 router.post("/request-otp", authControllers.requestOtp);
-
-// verify OTP
 router.post("/verify-otp", authControllers.verifyOtp);
-
-// reset password
 router.post("/reset-password", authControllers.resetPassword);
 
-router.get("/google", authControllers.googleAuth);
-router.get("/google/callback", authControllers.googleCallback);
+// --- Google OAuth ---
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/callback",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  (req, res) => {
+    // success → redirect frontend dashboard
+    res.redirect("https://gidswapv2-indol.vercel.app/dashboard");
+  }
+);
 
 module.exports = router;
