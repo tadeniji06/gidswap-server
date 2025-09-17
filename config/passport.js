@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 passport.use(new GoogleStrategy({
     clientID: process.env.OAUTH_CLIENT_ID,
     clientSecret: process.env.OAUTH_CLIENT_SECRET,
-    callbackURL: "/api/auth/callback"
+    callbackURL: "/auth/callback"
 }, async (profile, done) => {
     try {
         // Check if user already exists with this email
@@ -17,7 +17,6 @@ passport.use(new GoogleStrategy({
             return done(null, existingUser);
         }
         
-        // Create new user
         const newUser = new User({
             fullName: profile.displayName,
             email: profile.emails[0].value,
