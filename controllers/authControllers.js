@@ -2,7 +2,11 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const emailjs = require("@emailjs/nodejs");
-const { getClientIP, getUserAgent } = require("../helpers/getClientIP"); 
+const {
+	getClientIP,
+	getUserAgent,
+} = require("../helpers/getClientIP");
+const passport = require("passport");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -51,7 +55,9 @@ exports.signUp = async (req, res) => {
 			expiresIn: "7d",
 		});
 
-		console.log(`New user signup - IP: ${ipAddress}, User-Agent: ${userAgent}`);
+		console.log(
+			`New user signup - IP: ${ipAddress}, User-Agent: ${userAgent}`
+		);
 
 		res.status(201).json({
 			message: "Signup successful",
@@ -141,7 +147,9 @@ exports.login = async (req, res) => {
 			expiresIn: "7d",
 		});
 
-		console.log(`User login - Email: ${email}, IP: ${ipAddress}, User-Agent: ${userAgent}`);
+		console.log(
+			`User login - Email: ${email}, IP: ${ipAddress}, User-Agent: ${userAgent}`
+		);
 
 		res.status(200).json({
 			message: "Login successful",
@@ -158,7 +166,6 @@ exports.login = async (req, res) => {
 	}
 };
 
-// store OTPs in-memory for demo (better: use Redis or DB with expiry)
 const otpStore = {};
 
 // Generate 6-digit OTP
@@ -258,4 +265,82 @@ exports.resetPassword = async (req, res) => {
 		console.error("Reset password error:", error);
 		res.status(500).json({ message: "Invalid or expired token." });
 	}
+};
+
+// GOOGLE AUTH INITIATE
+exports.googleAuth = (req, res, next) => {
+	passport.authenticate("google", {
+		scope: ["profile", "email"],
+	})(req, res, next);
+};
+
+// GOOGLE AUTH CALLBACK
+exports.googleCallback = async (req, res, next) => {
+	passport.authenticate(
+		"google",
+		{ session: false },
+		async (err, user) => {
+			if (err) {
+				console.error("Google callback error:", err);
+				return res.redirect(
+					`${
+						process.env.CLIENT_URL || "http://localhost:3000"
+					}/login?error=auth_failed`
+				);
+			}
+
+			if (!user) {
+				return res.redirect(
+					`${
+						process.env.CLIENT_URL || "http://localhost:3000"
+					}/login?error=auth_cancelled`
+				);
+			}
+
+			try {
+				// Get IP and User-Agent for login tracking
+				const ipAddress = getClientIP(req);
+				const userAgent = getUserAgent(req);
+
+				// Update last login info
+				await User.updateOne(
+					{ _id: user._id },
+					{
+						lastLoginIP: ipAddress,
+						lastLoginUserAgent: userAgent,
+						lastLoginAt: new Date(),
+						// Set initial IP info if not set (for new OAuth users)
+						...((!user.ipAddress || !user.userAgent) && {
+							ipAddress: ipAddress,
+							userAgent: userAgent,
+						}),
+					}
+				);
+
+				// Generate JWT
+				const token = jwt.sign(
+					{ userId: user._id },
+					process.env.JWT_SECRET,
+					{ expiresIn: "7d" }
+				);
+
+				console.log(
+					`Google OAuth login - Email: ${user.email}, IP: ${ipAddress}`
+				);
+
+				// Redirect to frontend with token
+				const redirectURL = `${
+					process.env.CLIENT_URL || "http://localhost:3000"
+				}/auth-success?token=${token}`;
+				res.redirect(redirectURL);
+			} catch (error) {
+				console.error("Token generation error:", error);
+				res.redirect(
+					`${
+						process.env.CLIENT_URL || "http://localhost:3000"
+					}/login?error=token_failed`
+				);
+			}
+		}
+	)(req, res, next);
 };

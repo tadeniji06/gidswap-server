@@ -20,4 +20,7 @@ router.post("/verify-otp", authControllers.verifyOtp);
 // reset password
 router.post("/reset-password", authControllers.resetPassword);
 
+router.get("/google", authControllers.googleAuth);
+router.get("/google/callback", authControllers.googleCallback);
+
 module.exports = router;

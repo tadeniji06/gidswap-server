@@ -4,7 +4,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
-
+const passport = require("./config/passport");
 const app = express();
 
 // Middlewares
@@ -21,6 +21,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(passport.initialize());
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(express.json({ limit: "10mb" }));
@@ -46,6 +47,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
+
 // Self-ping function to keep server alive
 const selfPing = async () => {
 	try {
@@ -54,15 +56,13 @@ const selfPing = async () => {
 
 		if (response.ok) {
 			console.log(
-				`✅ Self ping successful at ${new Date().toISOString()}`
+				`Self ping successful at ${new Date().toISOString()}`
 			);
 		} else {
-			console.log(
-				`⚠️ Self ping failed with status: ${response.status}`
-			);
+			console.log(`Self ping failed with status: ${response.status}`);
 		}
 	} catch (error) {
-		console.error(`❌ Self ping error: ${error.message}`);
+		console.error(`Self ping error: ${error.message}`);
 	}
 };
 
@@ -74,7 +74,7 @@ const startSelfPing = () => {
 		setInterval(selfPing, 2 * 60 * 1000);
 	}, 30000);
 
-	console.log("🔄 Self-ping mechanism started");
+	console.log("Self-ping started");
 };
 
 // Start the self-ping when the server starts

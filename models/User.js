@@ -5,7 +5,11 @@ const userSchema = new mongoose.Schema({
 	email: { type: String, required: true, unique: true },
 	password: { type: String, required: true },
 
-	// New fields for tracking user info
+	// Google OAuth fields
+	googleId: { type: String },
+	isGoogleAuth: { type: Boolean, default: false },
+
+	// Existing fields for tracking user info
 	ipAddress: { type: String },
 	userAgent: { type: String },
 	lastLoginIP: { type: String },
