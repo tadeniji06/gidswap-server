@@ -8,7 +8,8 @@ passport.use(
 		{
 			clientID: process.env.OAUTH_CLIENT_ID,
 			clientSecret: process.env.OAUTH_CLIENT_SECRET,
-			callbackURL: "https://gidswapv2-indol.vercel.app/auth/callback",
+			callbackURL:
+				"https://gidswap-server.onrender.com/api/auth/callback",
 		},
 		async (profile, done) => {
 			try {
