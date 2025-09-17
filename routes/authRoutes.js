@@ -19,7 +19,7 @@ router.get(
 
 router.get(
   "/callback",
-  passport.authenticate("google", { failureRedirect: "/login" }),
+  passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
     // success → redirect frontend dashboard
     res.redirect("https://gidswapv2-indol.vercel.app/dashboard");
