@@ -20,23 +20,37 @@ router.get(
 
 router.get(
 	"/callback",
-	passport.authenticate("google", {
-		failureRedirect: "/",
-		session: false,
-	}),
+	passport.authenticate("google", { session: false }),
 	async (req, res) => {
 		try {
-			// Generate JWT for logged-in user
+			if (!req.user) {
+				return res.status(401).json({
+					success: false,
+					message: "Google authentication failed",
+				});
+			}
+
+			// Generate JWT
 			const token = generateJWT(req.user);
 
-			// res.redirect(
-			// 	`https://gidswapv2-indol.vercel.app/dashboard?token=${token}`
-			// );
+			res.status(200).json({
+				success: true,
+				message: "Google authentication successful",
+				token,
+				user: {
+					id: req.user._id,
+					fullName: req.user.fullName,
+					email: req.user.email,
+					isGoogleAuth: req.user.isGoogleAuth,
+				},
+			});
 		} catch (error) {
 			console.error("JWT generation error:", error);
-			// res.redirect(
-			// 	"https://gidswapv2-indol.vercel.app/?error=oauth_failed"
-			// );
+			res.status(500).json({
+				success: false,
+				message: "Server error during Google OAuth",
+				error: error.message,
+			});
 		}
 	}
 );
