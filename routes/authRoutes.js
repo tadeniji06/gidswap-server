@@ -29,15 +29,14 @@ router.get(
 			// Generate JWT for logged-in user
 			const token = generateJWT(req.user);
 
-			// Redirect to frontend with token
-			res.redirect(
-				`https://gidswapv2-indol.vercel.app/dashboard?token=${token}`
-			);
+			// res.redirect(
+			// 	`https://gidswapv2-indol.vercel.app/dashboard?token=${token}`
+			// );
 		} catch (error) {
 			console.error("JWT generation error:", error);
-			res.redirect(
-				"https://gidswapv2-indol.vercel.app/?error=oauth_failed"
-			);
+			// res.redirect(
+			// 	"https://gidswapv2-indol.vercel.app/?error=oauth_failed"
+			// );
 		}
 	}
 );

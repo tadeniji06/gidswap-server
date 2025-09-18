@@ -11,7 +11,7 @@ passport.use(
 			callbackURL:
 				"https://gidswap-server.onrender.com/api/auth/callback",
 		},
-		async (accessToken, refreshToken, profile, done) => {
+		async (profile, done) => {
 			try {
 				// Check if user exists
 				let existingUser = await User.findOne({
