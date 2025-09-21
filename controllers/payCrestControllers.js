@@ -35,10 +35,10 @@ module.exports = {
 				{ headers }
 			);
 
-			console.log(
-				"PayCrest order created successfully:",
-				res.data
-			);
+			// console.log(
+			// 	"PayCrest order created successfully:",
+			// 	res.data
+			// );
 			return res.data;
 		} catch (error) {
 			console.error("PayCrest API Error:", {
