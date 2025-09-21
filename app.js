@@ -42,10 +42,12 @@ const fixedFloatRoutes = require("./routes/fixFloatRoutes");
 const authMiddlewares = require("./middlewares/authMiddlewares");
 const payCrestRoutes = require("./routes/payCrestRoutes");
 const userRoutes = require("./routes/userRoutes");
+const webhookRouter = require("./routes/payCrestWebhook")
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
+app.use("/api/webhooks", webhookRouter)
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 
 // Self-ping function to keep server alive
@@ -55,14 +57,14 @@ const selfPing = async () => {
 		const response = await fetch(`${serverUrl}/api/ping`);
 
 		if (response.ok) {
-			console.log(
-				`Self ping successful at ${new Date().toISOString()}`
-			);
+			// console.log(
+			// 	`Self ping successful at ${new Date().toISOString()}`
+			// );
 		} else {
-			console.log(`Self ping failed with status: ${response.status}`);
+			// console.log(`Self ping failed with status: ${response.status}`);
 		}
 	} catch (error) {
-		console.error(`Self ping error: ${error.message}`);
+		// console.error(`Self ping error: ${error.message}`);
 	}
 };
 

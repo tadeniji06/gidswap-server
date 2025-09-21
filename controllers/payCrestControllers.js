@@ -36,12 +36,12 @@ module.exports = {
 			);
 
 			console.log(
-				"✅ PayCrest order created successfully:",
+				"PayCrest order created successfully:",
 				res.data
 			);
 			return res.data;
 		} catch (error) {
-			console.error("❌ PayCrest API Error:", {
+			console.error("PayCrest API Error:", {
 				status: error.response?.status,
 				statusText: error.response?.statusText,
 				data: error.response?.data,
@@ -59,7 +59,7 @@ module.exports = {
 			);
 			return res.data;
 		} catch (error) {
-			console.error("❌ PayCrest Banks API Error:", {
+			console.error("PayCrest Banks API Error:", {
 				status: error.response?.status,
 				statusText: error.response?.statusText,
 				data: error.response?.data,
