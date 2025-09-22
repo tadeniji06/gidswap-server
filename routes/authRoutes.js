@@ -32,7 +32,7 @@ router.get(
 
 			// Redirect to frontend with ONLY token
 			res.redirect(
-				`https://gidswapv2-indol.vercel.app/api/callback?token=${token}`
+				`https://gidswapv2-indol.vercel.app/auth/callback?token=${token}`
 			);
 		} catch (error) {
 			console.error("Google OAuth error:", error);
