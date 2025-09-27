@@ -85,9 +85,7 @@ router.get(
 	async (req, res) => {
 		try {
 			if (!req.user) {
-				return res.redirect(
-					`https://gidswapv2-indol.vercel.app?error=google_auth_failed`
-				);
+				return res.redirect(`https://www.gidswap.com`);
 			}
 
 			// Generate JWT
@@ -95,13 +93,11 @@ router.get(
 
 			// Redirect with token only
 			return res.redirect(
-				`https://gidswapv2-indol.vercel.app/auth/callback?token=${token}`
+				`https://www.gidswap.com/auth/callback?token=${token}`
 			);
 		} catch (error) {
 			console.error("Google OAuth error:", error);
-			return res.redirect(
-				`https://gidswapv2-indol.vercel.app?error=server_error`
-			);
+			return res.redirect(`https://www.gidswap.com`);
 		}
 	}
 );
