@@ -9,19 +9,42 @@ const {
 } = require("../controllers/payCrestControllers");
 const Transaction = require("../models/Transactions");
 const authMiddleware = require("../middlewares/authMiddlewares");
+const axios = require("axios");
 
 const router = express.Router();
+
+/**
+ * Normalize Paycrest statuses → DB enum values
+ */
+const normalizeStatus = (status) => {
+	switch (status) {
+		case "pending":
+			return "pending";
+		case "validated":
+			return "validated"; // funds sent to recipient
+		case "settled":
+		case "success":
+		case "completed":
+			return "settled"; // treat all as settled
+		case "refunded":
+			return "refunded";
+		case "expired":
+			return "expired";
+		case "failed":
+			return "failed";
+		default:
+			return "pending"; // fallback
+	}
+};
 
 /**
  * Init Paycrest order + save transaction immediately
  */
 router.post("/init-order", authMiddleware, async (req, res) => {
 	try {
-		// 1. Call Paycrest API
 		const result = await initOrder(req.body);
-
-		// 2. Extract order data from Paycrest response
 		const orderData = result?.data;
+
 		if (!orderData?.id) {
 			return res.status(400).json({
 				success: false,
@@ -30,7 +53,6 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 			});
 		}
 
-		// 3. Save transaction in DB with "pending" status
 		const txn = new Transaction({
 			orderId: orderData.id,
 			user: req.user._id,
@@ -41,7 +63,6 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 
 		await txn.save();
 
-		// 4. Return combined response
 		res.status(201).json({
 			success: true,
 			message: "Order initiated successfully",
@@ -54,6 +75,59 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 	}
 });
 
+/**
+ * Poll order status from Paycrest + update DB
+ */
+router.get("/status/:orderId", authMiddleware, async (req, res) => {
+	try {
+		const { orderId } = req.params;
+
+		let txn = await Transaction.findOne({
+			orderId,
+			user: req.user._id,
+		});
+		if (!txn) {
+			return res.status(404).json({
+				success: false,
+				message: "Transaction not found",
+			});
+		}
+
+		const paycrestRes = await axios.get(
+			`${process.env.PAY_CREST_API}/sender/orders/${orderId}`,
+			{
+				headers: {
+					"API-Key": process.env.PAY_CREST_API_KEY,
+					Accept: "application/json",
+				},
+			}
+		);
+
+		const order = paycrestRes.data;
+		const newStatus = normalizeStatus(order.status);
+
+		if (txn.status !== newStatus) {
+			txn.status = newStatus;
+			await txn.save();
+		}
+
+		return res.json({
+			success: true,
+			transaction: txn,
+			paycrestResponse: order,
+		});
+	} catch (error) {
+		console.error(
+			"Polling error:",
+			error.response?.data || error.message
+		);
+		return res.status(500).json({ error: "Failed to poll status" });
+	}
+});
+
+/**
+ * Get supported currencies
+ */
 router.get("/getSupportedCies", async (req, res) => {
 	try {
 		const result = await getSupportedCurrencies();
@@ -64,6 +138,9 @@ router.get("/getSupportedCies", async (req, res) => {
 	}
 });
 
+/**
+ * Get supported tokens
+ */
 router.get("/getSupportedTokens", async (req, res) => {
 	try {
 		const result = await getSupportedTokens();
@@ -74,7 +151,9 @@ router.get("/getSupportedTokens", async (req, res) => {
 	}
 });
 
-// use currency_code param
+/**
+ * Get supported banks for a currency
+ */
 router.get("/supportedBanks/:currency_code", async (req, res) => {
 	try {
 		const { currency_code } = req.params;
@@ -86,7 +165,9 @@ router.get("/supportedBanks/:currency_code", async (req, res) => {
 	}
 });
 
-// use all params
+/**
+ * Get token rate
+ */
 router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
 	try {
 		const { token, amount, fiat } = req.params;
@@ -98,6 +179,9 @@ router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
 	}
 });
 
+/**
+ * Verify account
+ */
 router.post("/verifyAccount", async (req, res) => {
 	try {
 		const result = await verifyAccount(req.body);
