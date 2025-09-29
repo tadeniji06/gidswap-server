@@ -10,12 +10,12 @@ const app = express();
 
 // Middlewares
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "https://gidswap.com",
-    "https://www.gidswap.com",
-  ],
-  credentials: true,
+	origin: [
+		"http://localhost:3000",
+		"https://gidswap.com",
+		"https://www.gidswap.com",
+	],
+	credentials: true,
 };
 
 app.use(cors(corsOptions));
@@ -24,10 +24,9 @@ app.use(helmet());
 app.use(morgan("dev"));
 app.use(cookieParser());
 
-
 app.use(
-  "/api/webhooks/paycrest",
-  express.raw({ type: "*/*", limit: "10mb" })
+	"/api/webhooks/paycrest",
+	express.raw({ type: "*/*", limit: "10mb" })
 );
 
 // Now the global JSON parser for all other routes
@@ -35,11 +34,11 @@ app.use(express.json({ limit: "10mb" }));
 
 // Self-ping endpoint
 app.get("/api/ping", (req, res) => {
-  res.status(200).json({
-    status: "success",
-    message: "Server is alive",
-    timestamp: new Date().toISOString(),
-  });
+	res.status(200).json({
+		status: "success",
+		message: "Server is alive",
+		timestamp: new Date().toISOString(),
+	});
 });
 
 // routes
@@ -49,7 +48,9 @@ const authMiddlewares = require("./middlewares/authMiddlewares");
 const payCrestRoutes = require("./routes/payCrestRoutes");
 const userRoutes = require("./routes/userRoutes");
 const webhookRouter = require("./routes/payCrestWebhook");
+const transactionRoutes = require("./routes/transactionRoutes");
 
+app.use("/api/transactions", authMiddlewares, transactionRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
@@ -58,22 +59,22 @@ app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 
 // Self-ping function to keep server alive (keeps Render from sleeping)
 const selfPing = async () => {
-  try {
-    const serverUrl = process.env.SERVER_URL;
-    if (!serverUrl) return;
-    const response = await fetch(`${serverUrl}/api/ping`);
-    // ignore response
-  } catch (error) {
-    // ignore
-  }
+	try {
+		const serverUrl = process.env.SERVER_URL;
+		if (!serverUrl) return;
+		const response = await fetch(`${serverUrl}/api/ping`);
+		// ignore response
+	} catch (error) {
+		// ignore
+	}
 };
 
 const startSelfPing = () => {
-  setTimeout(() => {
-    selfPing();
-    setInterval(selfPing, 2 * 60 * 1000);
-  }, 30000);
-  console.log("Self-ping started");
+	setTimeout(() => {
+		selfPing();
+		setInterval(selfPing, 2 * 60 * 1000);
+	}, 30000);
+	console.log("Self-ping started");
 };
 
 startSelfPing();

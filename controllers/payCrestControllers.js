@@ -34,11 +34,6 @@ module.exports = {
 				payload,
 				{ headers }
 			);
-
-			// console.log(
-			// 	"PayCrest order created successfully:",
-			// 	res.data
-			// );
 			return res.data;
 		} catch (error) {
 			console.error("PayCrest API Error:", {
