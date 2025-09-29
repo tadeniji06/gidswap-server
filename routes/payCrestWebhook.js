@@ -5,15 +5,16 @@ const Transaction = require("../models/Transactions");
 const router = express.Router();
 
 // Verify PayCrest HMAC signature
-function verifySignature(body, signature, secret) {
+function verifySignature(rawBody, signature, secret) {
 	const expected = crypto
 		.createHmac("sha256", secret)
-		.update(JSON.stringify(body))
+		.update(rawBody) // use raw string, not parsed JSON
 		.digest("hex");
 
 	return expected === signature;
 }
 
+// Webhook endpoint
 router.post("/paycrest", async (req, res) => {
 	try {
 		const signature = req.get("X-Paycrest-Signature");
@@ -21,12 +22,14 @@ router.post("/paycrest", async (req, res) => {
 			return res.status(401).json({ error: "Missing signature" });
 		}
 
-		const body =
-			typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+		// rawBody is a Buffer because of express.raw()
+		const rawBody = req.body.toString("utf8");
+		const body = JSON.parse(rawBody);
 
+		// Verify signature
 		if (
 			!verifySignature(
-				body,
+				rawBody,
 				signature,
 				process.env.PAY_CREST_API_SECRET
 			)
@@ -37,15 +40,28 @@ router.post("/paycrest", async (req, res) => {
 		const { data, event } = body;
 		console.log("Webhook received:", event, data);
 
-		// Find existing transaction
+		// Find transaction
 		let txn = await Transaction.findOne({ orderId: data.id });
 		if (!txn) {
 			console.warn("Webhook for unknown transaction:", data.id);
 			return res.status(404).json({ error: "Transaction not found" });
 		}
 
-		// Update status
-		txn.status = event.replace("payment_order.", ""); // normalize
+		// Normalize and update status
+		const mapStatus = (evt) => {
+			switch (evt) {
+				case "payment_order.completed":
+					return "completed";
+				case "payment_order.failed":
+					return "failed";
+				case "payment_order.pending":
+					return "pending";
+				default:
+					return "unknown";
+			}
+		};
+
+		txn.status = mapStatus(event);
 		txn.updatedAt = Date.now();
 		await txn.save();
 

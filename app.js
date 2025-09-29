@@ -24,12 +24,13 @@ app.use(helmet());
 app.use(morgan("dev"));
 app.use(cookieParser());
 
+// Raw body only for Paycrest webhook
 app.use(
 	"/api/webhooks/paycrest",
-	express.raw({ type: "*/*", limit: "10mb" })
+	express.raw({ type: "application/json", limit: "10mb" })
 );
 
-// Now the global JSON parser for all other routes
+// Global JSON parser for all other routes
 app.use(express.json({ limit: "10mb" }));
 
 // Self-ping endpoint
@@ -57,14 +58,13 @@ app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 
-// Self-ping function to keep server alive (keeps Render from sleeping)
+// Self-ping function to keep server alive (Render workaround)
 const selfPing = async () => {
 	try {
 		const serverUrl = process.env.SERVER_URL;
 		if (!serverUrl) return;
-		const response = await fetch(`${serverUrl}/api/ping`);
-		// ignore response
-	} catch (error) {
+		await fetch(`${serverUrl}/api/ping`);
+	} catch {
 		// ignore
 	}
 };
