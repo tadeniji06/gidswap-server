@@ -1,6 +1,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const Transaction = require("../models/Transactions");
+const { mapPaycrestStatus } = require("../utils/paycrestStatus");
 
 const router = express.Router();
 
@@ -13,33 +14,6 @@ function verifySignature(rawBody, signature, secret) {
 
 	return expected === signature;
 }
-
-const mapEventToStatus = (evt) => {
-	switch (evt) {
-		case "payment_order.pending":
-			return "pending";
-		case "payment_order.processing":
-			return "processing";
-		case "payment_order.fulfilled":
-			return "fulfilled";
-		case "payment_order.validated":
-			return "validated";
-		case "payment_order.settled":
-			return "settled";
-		case "payment_order.cancelled":
-			return "cancelled";
-		case "payment_order.refunded":
-			return "refunded";
-		case "payment_order.expired":
-			return "expired";
-		case "payment_order.failed":
-			return "failed";
-		case "payment_order.completed":
-			return "fulfilled"; 
-		default:
-			return "pending";
-	}
-};
 
 // Webhook endpoint
 router.post("/paycrest", async (req, res) => {
@@ -71,7 +45,7 @@ router.post("/paycrest", async (req, res) => {
 			return res.status(404).json({ error: "Transaction not found" });
 		}
 
-		txn.status = mapEventToStatus(event);
+		txn.status = mapPaycrestStatus(event);
 		await txn.save();
 
 		res.status(200).json({ success: true });

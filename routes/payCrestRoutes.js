@@ -10,28 +10,9 @@ const {
 const Transaction = require("../models/Transactions");
 const authMiddleware = require("../middlewares/authMiddlewares");
 const axios = require("axios");
+const { mapPaycrestStatus } = require("../utils/paycrestStatus");
 
 const router = express.Router();
-
-/**
- * Normalize Paycrest statuses → DB enum values
- */
-const normalizeStatus = (status) => {
-	switch (status) {
-		case "payment_order.pending":
-			return "pending";
-		case "payment_order.validated":
-			return "validated";
-		case "payment_order.settled":
-			return "settled";
-		case "payment_order.refunded":
-			return "refunded";
-		case "payment_order.expired":
-			return "expired";
-		default:
-			return "pending"; // fallback
-	}
-};
 
 /**
  * Init Paycrest order + save transaction immediately
@@ -100,7 +81,7 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 		);
 
 		const order = paycrestRes.data;
-		const newStatus = normalizeStatus(order.status);
+		const newStatus = mapPaycrestStatus(order.status);
 
 		if (txn.status !== newStatus) {
 			txn.status = newStatus;
@@ -118,6 +99,73 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			error.response?.data || error.message
 		);
 		return res.status(500).json({ error: "Failed to poll status" });
+	}
+});
+
+/**
+ * Get supported currencies
+ */
+router.get("/getSupportedCies", async (req, res) => {
+	try {
+		const result = await getSupportedCurrencies();
+		res.json(result);
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ error: "Internal Server Error" });
+	}
+});
+
+/**
+ * Get supported tokens
+ */
+router.get("/getSupportedTokens", async (req, res) => {
+	try {
+		const result = await getSupportedTokens();
+		res.json(result);
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ error: "Internal Server Error" });
+	}
+});
+
+/**
+ * Get supported banks for a currency
+ */
+router.get("/supportedBanks/:currency_code", async (req, res) => {
+	try {
+		const { currency_code } = req.params;
+		const result = await getSupportedBanks(currency_code);
+		res.json(result);
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ error: "Internal Server Error" });
+	}
+});
+
+/**
+ * Get token rate
+ */
+router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
+	try {
+		const { token, amount, fiat } = req.params;
+		const result = await getTokenRate({ token, amount, fiat });
+		res.json(result);
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ error: "Server Error" });
+	}
+});
+
+/**
+ * Verify account
+ */
+router.post("/verifyAccount", async (req, res) => {
+	try {
+		const result = await verifyAccount(req.body);
+		res.json(result);
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({ error });
 	}
 });
 
