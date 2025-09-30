@@ -18,20 +18,16 @@ const router = express.Router();
  */
 const normalizeStatus = (status) => {
 	switch (status) {
-		case "pending":
+		case "payment_order.pending":
 			return "pending";
-		case "validated":
-			return "validated"; // funds sent to recipient
-		case "settled":
-		case "success":
-		case "completed":
-			return "settled"; // treat all as settled
-		case "refunded":
+		case "payment_order.validated":
+			return "validated";
+		case "payment_order.settled":
+			return "settled";
+		case "payment_order.refunded":
 			return "refunded";
-		case "expired":
+		case "payment_order.expired":
 			return "expired";
-		case "failed":
-			return "failed";
 		default:
 			return "pending"; // fallback
 	}
@@ -122,73 +118,6 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			error.response?.data || error.message
 		);
 		return res.status(500).json({ error: "Failed to poll status" });
-	}
-});
-
-/**
- * Get supported currencies
- */
-router.get("/getSupportedCies", async (req, res) => {
-	try {
-		const result = await getSupportedCurrencies();
-		res.json(result);
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({ error: "Internal Server Error" });
-	}
-});
-
-/**
- * Get supported tokens
- */
-router.get("/getSupportedTokens", async (req, res) => {
-	try {
-		const result = await getSupportedTokens();
-		res.json(result);
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({ error: "Internal Server Error" });
-	}
-});
-
-/**
- * Get supported banks for a currency
- */
-router.get("/supportedBanks/:currency_code", async (req, res) => {
-	try {
-		const { currency_code } = req.params;
-		const result = await getSupportedBanks(currency_code);
-		res.json(result);
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({ error: "Internal Server Error" });
-	}
-});
-
-/**
- * Get token rate
- */
-router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
-	try {
-		const { token, amount, fiat } = req.params;
-		const result = await getTokenRate({ token, amount, fiat });
-		res.json(result);
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({ error: "Server Error" });
-	}
-});
-
-/**
- * Verify account
- */
-router.post("/verifyAccount", async (req, res) => {
-	try {
-		const result = await verifyAccount(req.body);
-		res.json(result);
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({ error });
 	}
 });
 
