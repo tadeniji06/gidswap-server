@@ -10,15 +10,23 @@ const {
 const Transaction = require("../models/Transactions");
 const authMiddleware = require("../middlewares/authMiddlewares");
 const axios = require("axios");
-const { mapPaycrestStatus } = require("../utils/paycrestStatus");
-
+const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
 const router = express.Router();
+
+const PAYCREST_BASE =
+	process.env.PAY_CREST_API?.replace(/\/+$/, "") ||
+	"https://api.paycrest.io/v1";
 
 /**
  * Init Paycrest order + save transaction immediately
+ * (Assumes initOrder is implemented in a controller; if not, use axios here)
  */
 router.post("/init-order", authMiddleware, async (req, res) => {
 	try {
+		// you previously used a controller; keep it or inline axios call
+		const {
+			initOrder,
+		} = require("../controllers/payCrestControllers");
 		const result = await initOrder(req.body);
 		const orderData = result?.data;
 
@@ -30,62 +38,118 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 			});
 		}
 
+		// Save canonical external ID as orderId
 		const txn = new Transaction({
-			orderId: orderData.id,
+			orderId: orderData.id, // external id from paycrest
 			user: req.user._id,
 			status: "pending",
 			amount: orderData.amount,
 			currency: orderData.currency,
+			meta: orderData, // optionally store raw response
 		});
 
 		await txn.save();
 
-		res.status(201).json({
+		return res.status(201).json({
 			success: true,
 			message: "Order initiated successfully",
 			transaction: txn,
 			paycrestResponse: result,
 		});
 	} catch (error) {
-		console.error("Init order error:", error);
-		res.status(500).json({ error: "Internal Server Error" });
+		console.error(
+			"Init order error:",
+			error.response?.data || error.message || error
+		);
+		return res.status(500).json({ error: "Internal Server Error" });
 	}
 });
 
 /**
  * Poll order status from Paycrest + update DB
+ * GET /status/:orderId
  */
 router.get("/status/:orderId", authMiddleware, async (req, res) => {
 	try {
 		const { orderId } = req.params;
 
+		// find user transaction first
 		let txn = await Transaction.findOne({
 			orderId,
 			user: req.user._id,
-		});
+		}).exec();
+
+		// fallback: if not found for this user, try without user (admin / reconciliation)
 		if (!txn) {
+			console.warn(
+				`Transaction not found for user ${req.user._id} and orderId ${orderId}. Trying global lookup...`
+			);
+			txn = await Transaction.findOne({ orderId }).exec();
+			if (!txn) {
+				return res.status(404).json({
+					success: false,
+					message: "Transaction not found",
+				});
+			}
+		}
+
+		// call paycrest
+		const url = `${PAYCREST_BASE}/sender/orders/${encodeURIComponent(
+			orderId
+		)}`;
+		console.log("Polling Paycrest URL:", url);
+
+		const paycrestRes = await axios.get(url, {
+			headers: {
+				"API-Key": process.env.PAY_CREST_API_KEY,
+				Accept: "application/json",
+			},
+			validateStatus: null, // we'll handle 404/500 explicitly
+		});
+
+		if (paycrestRes.status === 404) {
+			console.warn(
+				"Paycrest returned 404 for orderId",
+				orderId,
+				"response:",
+				paycrestRes.data
+			);
+			// Optionally set txn to a special 'not_found' state, or keep as is and return error to client
 			return res.status(404).json({
 				success: false,
-				message: "Transaction not found",
+				message: "Order not found at Paycrest",
+				paycrestResponse: paycrestRes.data,
 			});
 		}
 
-		const paycrestRes = await axios.get(
-			`${process.env.PAY_CREST_API}/sender/orders/${orderId}`,
-			{
-				headers: {
-					"API-Key": process.env.PAY_CREST_API_KEY,
-					Accept: "application/json",
-				},
-			}
-		);
+		if (paycrestRes.status >= 400) {
+			console.error(
+				"Paycrest error:",
+				paycrestRes.status,
+				paycrestRes.data
+			);
+			return res.status(500).json({
+				success: false,
+				message: "Paycrest API returned error",
+				paycrestResponse: paycrestRes.data,
+			});
+		}
 
 		const order = paycrestRes.data;
-		const newStatus = mapPaycrestStatus(order.status);
+		// Some APIs wrap data in { data: {...} }
+		const orderStatusRaw =
+			order?.status ||
+			order?.data?.status ||
+			order?.event ||
+			order?.data?.event;
+		const mapped = mapPaycrestStatus(orderStatusRaw);
 
-		if (txn.status !== newStatus) {
-			txn.status = newStatus;
+		if (txn.status !== mapped) {
+			txn.status = mapped;
+			txn.lastPolledAt = new Date();
+			txn.lastPaycrestResponse = order; // optional
 			await txn.save();
+			console.log(`Updated txn ${txn._id} -> ${mapped}`);
 		}
 
 		return res.json({
@@ -96,7 +160,7 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 	} catch (error) {
 		console.error(
 			"Polling error:",
-			error.response?.data || error.message
+			error.response?.data || error.message || error
 		);
 		return res.status(500).json({ error: "Failed to poll status" });
 	}
