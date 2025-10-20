@@ -17,6 +17,7 @@ const corsOptions = {
 	origin: [
 		"http://localhost:3000",
 		"http://192.168.1.205:3000",
+		"http://192.168.1.204:3000",
 		"https://gidswap.com",
 		"https://www.gidswap.com",
 	],
