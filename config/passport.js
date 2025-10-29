@@ -9,7 +9,7 @@ passport.use(
 			clientID: process.env.OAUTH_CLIENT_ID,
 			clientSecret: process.env.OAUTH_CLIENT_SECRET,
 			callbackURL:
-				"https://gidswap-server.onrender.com/api/auth/callback",
+				"https://gids-7pni.onrender.com/api/auth/callback",
 		},
 		async (accessToken, refreshToken, profile, done) => {
 			try {
