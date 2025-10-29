@@ -72,25 +72,25 @@ app.use("/api/webhooks", webhookRouter);
 // ----------------------
 // Self-Ping to Prevent Idle Shutdown (Render workaround)
 // ----------------------
-const selfPing = async () => {
-	try {
-		const serverUrl = process.env.SERVER_URL;
-		if (!serverUrl) return;
-		await fetch(`${serverUrl}/api/ping`);
-	} catch {
-		// ignore errors silently
-	}
-};
+// const selfPing = async () => {
+// 	try {
+// 		const serverUrl = process.env.SERVER_URL;
+// 		if (!serverUrl) return;
+// 		await fetch(`${serverUrl}/api/ping`);
+// 	} catch {
+// 		// ignore errors silently
+// 	}
+// };
 
-const startSelfPing = () => {
-	setTimeout(() => {
-		selfPing();
-		setInterval(selfPing, 2 * 60 * 1000); // every 2 mins
-	}, 30000); // wait 30s before starting
-	console.log("✅ Self-ping started");
-};
+// const startSelfPing = () => {
+// 	setTimeout(() => {
+// 		selfPing();
+// 		setInterval(selfPing, 2 * 60 * 1000); // every 2 mins
+// 	}, 30000); // wait 30s before starting
+// 	console.log("✅ Self-ping started");
+// };
 
-startSelfPing();
+// startSelfPing();
 
 // ----------------------
 // Export App
