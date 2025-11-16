@@ -70,7 +70,7 @@ app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 app.use("/api/webhooks", webhookRouter);
 
 // ----------------------
-// Self-Ping to Prevent Idle Shutdown (Render workaround)
+// Self-Ping to Prevent Idle Shutdown
 // ----------------------
 const selfPing = async () => {
 	try {
@@ -85,9 +85,9 @@ const selfPing = async () => {
 const startSelfPing = () => {
 	setTimeout(() => {
 		selfPing();
-		setInterval(selfPing, 2 * 60 * 1000); // every 2 mins
+		setInterval(selfPing, 1 * 60 * 1000);
 	}, 30000); // wait 30s before starting
-	console.log("✅ Self-ping started");
+	console.log("Self-ping started");
 };
 
 startSelfPing();

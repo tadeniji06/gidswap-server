@@ -1,4 +1,3 @@
-// utils/paycrestSignature.js
 const crypto = require("crypto");
 
 /**
