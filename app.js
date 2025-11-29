@@ -8,10 +8,6 @@ const passport = require("./config/passport");
 
 const app = express();
 
-// ----------------------
-// Middleware Setup
-// ----------------------
-
 // CORS options
 const corsOptions = {
 	origin: [
@@ -40,9 +36,7 @@ app.use(
 // JSON parser for all other routes
 app.use(express.json({ limit: "10mb" }));
 
-// ----------------------
-// Healthcheck
-// ----------------------
+
 app.get("/api/ping", (req, res) => {
 	res.status(200).json({
 		status: "success",
@@ -92,7 +86,4 @@ const startSelfPing = () => {
 
 startSelfPing();
 
-// ----------------------
-// Export App
-// ----------------------
 module.exports = app;

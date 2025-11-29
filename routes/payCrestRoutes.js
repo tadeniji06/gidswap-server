@@ -19,18 +19,20 @@ const PAYCREST_BASE =
 
 /**
  * Init Paycrest order + save transaction immediately
- * (Assumes initOrder is implemented in a controller; if not, use axios here)
+ * POST /api/payCrest/trade/init-order
  */
 router.post("/init-order", authMiddleware, async (req, res) => {
 	try {
-		// you previously used a controller; keep it or inline axios call
-		const {
-			initOrder,
-		} = require("../controllers/payCrestControllers");
+		console.log("🚀 Initializing order for user:", req.user._id);
+
+		// Call Paycrest API via controller
 		const result = await initOrder(req.body);
 		const orderData = result?.data;
 
+		console.log("📦 Paycrest response:", orderData);
+
 		if (!orderData?.id) {
+			console.error("❌ Invalid Paycrest response:", result);
 			return res.status(400).json({
 				success: false,
 				message: "Invalid response from Paycrest",
@@ -38,17 +40,22 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 			});
 		}
 
-		// Save canonical external ID as orderId
+		// Save transaction to database
 		const txn = new Transaction({
-			orderId: orderData.id, // external id from paycrest
+			orderId: orderData.id, // Paycrest order ID
 			user: req.user._id,
 			status: "pending",
-			amount: orderData.amount,
-			currency: orderData.currency,
-			meta: orderData, // optionally store raw response
+			amount: req.body.amount || orderData.amount,
+			currency: req.body.token || orderData.token,
+			network: req.body.network,
+			receiveAddress: orderData.receiveAddress,
+			reference: req.body.reference,
+			validUntil: orderData.validUntil,
+			paycrestData: orderData, // Store full Paycrest response
 		});
 
 		await txn.save();
+		console.log("✅ Transaction saved:", txn._id);
 
 		return res.status(201).json({
 			success: true,
@@ -58,142 +65,227 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 		});
 	} catch (error) {
 		console.error(
-			"Init order error:",
+			"❌ Init order error:",
 			error.response?.data || error.message || error
 		);
-		return res.status(500).json({ error: "Internal Server Error" });
+		return res.status(500).json({
+			success: false,
+			error: "Internal Server Error",
+			details: error.response?.data || error.message,
+		});
 	}
 });
 
 /**
- * Poll order status from Paycrest + update DB
- * GET /status/:orderId
+ * Get transaction status from YOUR database (for frontend polling)
+ * GET /api/payCrest/trade/status/:orderId
+ * 🔥 This is what the frontend polls every 3 seconds!
  */
 router.get("/status/:orderId", authMiddleware, async (req, res) => {
 	try {
 		const { orderId } = req.params;
+		const userId = req.user._id;
 
-		// find user transaction first
-		let txn = await Transaction.findOne({
+		console.log(
+			`📊 Status check for orderId: ${orderId}, user: ${userId}`
+		);
+
+		// Find transaction
+		const txn = await Transaction.findOne({
 			orderId,
-			user: req.user._id,
+			user: userId,
 		}).exec();
 
-		// fallback: if not found for this user, try without user (admin / reconciliation)
 		if (!txn) {
-			console.warn(
-				`Transaction not found for user ${req.user._id} and orderId ${orderId}. Trying global lookup...`
-			);
-			txn = await Transaction.findOne({ orderId }).exec();
+			console.warn(`⚠️ Transaction not found: ${orderId}`);
+			return res.status(404).json({
+				success: false,
+				message: "Transaction not found",
+			});
+		}
+
+		console.log(`✅ Transaction found, status: ${txn.status}`);
+
+		// Return in the same format your frontend expects
+		return res.status(200).json({
+			id: txn.orderId,
+			reference: txn.reference || txn.orderId,
+			amount: txn.amount?.toString() || "0",
+			token: txn.currency || "",
+			network: txn.network || "",
+			receiveAddress: txn.receiveAddress || "",
+			senderFee: "0",
+			transactionFee: "0",
+			validUntil: txn.validUntil || "",
+			status: txn.status, // 🎯 This is the key field!
+			updatedAt: txn.updatedAt,
+		});
+	} catch (error) {
+		console.error("❌ Status check error:", error);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to fetch status",
+			error: error.message,
+		});
+	}
+});
+
+/**
+ * Refresh status by polling Paycrest API directly and updating DB
+ * GET /api/payCrest/trade/status/:orderId/refresh
+ * Optional: Use this if you want to manually force a refresh
+ */
+router.get(
+	"/status/:orderId/refresh",
+	authMiddleware,
+	async (req, res) => {
+		try {
+			const { orderId } = req.params;
+			const userId = req.user._id;
+
+			console.log(`🔄 Force refresh for orderId: ${orderId}`);
+
+			// Find transaction
+			let txn = await Transaction.findOne({
+				orderId,
+				user: userId,
+			}).exec();
+
 			if (!txn) {
+				console.warn(`⚠️ Transaction not found: ${orderId}`);
 				return res.status(404).json({
 					success: false,
 					message: "Transaction not found",
 				});
 			}
-		}
 
-		// call paycrest
-		const url = `${PAYCREST_BASE}/sender/orders/${encodeURIComponent(
-			orderId
-		)}`;
-		console.log("Polling Paycrest URL:", url);
+			// Call Paycrest API
+			const url = `${PAYCREST_BASE}/sender/orders/${encodeURIComponent(
+				orderId
+			)}`;
+			console.log("📞 Calling Paycrest:", url);
 
-		const paycrestRes = await axios.get(url, {
-			headers: {
-				"API-Key": process.env.PAY_CREST_API_KEY,
-				Accept: "application/json",
-			},
-			validateStatus: null, // we'll handle 404/500 explicitly
-		});
-
-		if (paycrestRes.status === 404) {
-			console.warn(
-				"Paycrest returned 404 for orderId",
-				orderId,
-				"response:",
-				paycrestRes.data
-			);
-			// Optionally set txn to a special 'not_found' state, or keep as is and return error to client
-			return res.status(404).json({
-				success: false,
-				message: "Order not found at Paycrest",
-				paycrestResponse: paycrestRes.data,
+			const paycrestRes = await axios.get(url, {
+				headers: {
+					"API-Key": process.env.PAY_CREST_API_KEY,
+					Accept: "application/json",
+				},
+				validateStatus: null,
 			});
-		}
 
-		if (paycrestRes.status >= 400) {
+			if (paycrestRes.status === 404) {
+				console.warn(
+					"⚠️ Paycrest returned 404 for orderId:",
+					orderId
+				);
+				return res.status(404).json({
+					success: false,
+					message: "Order not found at Paycrest",
+					paycrestResponse: paycrestRes.data,
+				});
+			}
+
+			if (paycrestRes.status >= 400) {
+				console.error(
+					"❌ Paycrest error:",
+					paycrestRes.status,
+					paycrestRes.data
+				);
+				return res.status(500).json({
+					success: false,
+					message: "Paycrest API returned error",
+					paycrestResponse: paycrestRes.data,
+				});
+			}
+
+			const order = paycrestRes.data;
+
+			// Extract status from various possible locations
+			const orderStatusRaw =
+				order?.status ||
+				order?.data?.status ||
+				order?.event ||
+				order?.data?.event;
+
+			console.log(`📦 Paycrest returned status: ${orderStatusRaw}`);
+
+			// Map to our DB status
+			const mapped = mapPaycrestStatus(orderStatusRaw);
+			console.log(`🗺️ Mapped status: ${orderStatusRaw} -> ${mapped}`);
+
+			// Update if changed
+			if (txn.status !== mapped) {
+				const oldStatus = txn.status;
+				txn.status = mapped;
+				txn.lastPolledAt = new Date();
+				txn.paycrestData = order;
+				await txn.save();
+				console.log(
+					`✏️ Updated txn ${txn._id}: ${oldStatus} -> ${mapped}`
+				);
+			} else {
+				console.log(`ℹ️ Status unchanged: ${mapped}`);
+			}
+
+			return res.json({
+				success: true,
+				transaction: {
+					id: txn.orderId,
+					reference: txn.reference || txn.orderId,
+					amount: txn.amount?.toString() || "0",
+					token: txn.currency || "",
+					network: txn.network || "",
+					receiveAddress: txn.receiveAddress || "",
+					status: txn.status,
+					updatedAt: txn.updatedAt,
+				},
+				paycrestResponse: order,
+			});
+		} catch (error) {
 			console.error(
-				"Paycrest error:",
-				paycrestRes.status,
-				paycrestRes.data
+				"❌ Refresh error:",
+				error.response?.data || error.message || error
 			);
 			return res.status(500).json({
 				success: false,
-				message: "Paycrest API returned error",
-				paycrestResponse: paycrestRes.data,
+				error: "Failed to refresh status",
+				details: error.response?.data || error.message,
 			});
 		}
-
-		const order = paycrestRes.data;
-		// Some APIs wrap data in { data: {...} }
-		const orderStatusRaw =
-			order?.status ||
-			order?.data?.status ||
-			order?.event ||
-			order?.data?.event;
-		const mapped = mapPaycrestStatus(orderStatusRaw);
-
-		if (txn.status !== mapped) {
-			txn.status = mapped;
-			txn.lastPolledAt = new Date();
-			txn.lastPaycrestResponse = order; // optional
-			await txn.save();
-			console.log(`Updated txn ${txn._id} -> ${mapped}`);
-		}
-
-		return res.json({
-			success: true,
-			transaction: txn,
-			paycrestResponse: order,
-		});
-	} catch (error) {
-		console.error(
-			"Polling error:",
-			error.response?.data || error.message || error
-		);
-		return res.status(500).json({ error: "Failed to poll status" });
 	}
-});
+);
 
 /**
  * Get supported currencies
+ * GET /api/payCrest/trade/getSupportedCies
  */
 router.get("/getSupportedCies", async (req, res) => {
 	try {
 		const result = await getSupportedCurrencies();
 		res.json(result);
 	} catch (error) {
-		console.error(error);
+		console.error("❌ Get currencies error:", error);
 		res.status(500).json({ error: "Internal Server Error" });
 	}
 });
 
 /**
  * Get supported tokens
+ * GET /api/payCrest/trade/getSupportedTokens
  */
 router.get("/getSupportedTokens", async (req, res) => {
 	try {
 		const result = await getSupportedTokens();
 		res.json(result);
 	} catch (error) {
-		console.error(error);
+		console.error("❌ Get tokens error:", error);
 		res.status(500).json({ error: "Internal Server Error" });
 	}
 });
 
 /**
  * Get supported banks for a currency
+ * GET /api/payCrest/trade/supportedBanks/:currency_code
  */
 router.get("/supportedBanks/:currency_code", async (req, res) => {
 	try {
@@ -201,13 +293,14 @@ router.get("/supportedBanks/:currency_code", async (req, res) => {
 		const result = await getSupportedBanks(currency_code);
 		res.json(result);
 	} catch (error) {
-		console.error(error);
+		console.error("❌ Get banks error:", error);
 		res.status(500).json({ error: "Internal Server Error" });
 	}
 });
 
 /**
  * Get token rate
+ * GET /api/payCrest/trade/tokenRates/:token/:amount/:fiat
  */
 router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
 	try {
@@ -215,21 +308,22 @@ router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
 		const result = await getTokenRate({ token, amount, fiat });
 		res.json(result);
 	} catch (error) {
-		console.error(error);
+		console.error("❌ Get rate error:", error);
 		res.status(500).json({ error: "Server Error" });
 	}
 });
 
 /**
  * Verify account
+ * POST /api/payCrest/trade/verifyAccount
  */
 router.post("/verifyAccount", async (req, res) => {
 	try {
 		const result = await verifyAccount(req.body);
 		res.json(result);
 	} catch (error) {
-		console.error(error);
-		res.status(500).json({ error });
+		console.error("❌ Verify account error:", error);
+		res.status(500).json({ error: error.message || "Server Error" });
 	}
 });
 

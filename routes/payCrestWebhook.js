@@ -1,5 +1,5 @@
 const express = require("express");
-const Transaction = require("../models/Transactions"); // make sure file name matches
+const Transaction = require("../models/Transactions");
 const {
 	verifyPaycrestSignature,
 } = require("../utils/paycrestSignature");
@@ -9,23 +9,26 @@ const router = express.Router();
 
 /**
  * Paycrest Webhook Handler
- * NOTE: This route must be mounted at the same path where express.raw middleware is applied in app.js
+ * Mounted at /api/webhooks/paycrest
  */
 router.post("/paycrest", async (req, res) => {
 	try {
-		// 1. Grab signature header
+		console.log("🔔 Webhook received at:", new Date().toISOString());
+
+		// 1. Get signature header (try both cases)
 		const signature =
 			req.get("X-Paycrest-Signature") ||
 			req.get("x-paycrest-signature");
+
 		if (!signature) {
-			console.warn("Webhook missing signature header");
+			console.warn("❌ Webhook missing signature header");
 			return res.status(401).json({ error: "Missing signature" });
 		}
 
-		// 2. Ensure raw body is buffer
+		// 2. Verify raw body is buffer
 		const rawBody = req.body;
 		if (!Buffer.isBuffer(rawBody)) {
-			console.warn("Webhook rawBody not buffer:", typeof rawBody);
+			console.warn("❌ Webhook rawBody not buffer:", typeof rawBody);
 			return res
 				.status(400)
 				.json({ error: "Invalid webhook body type" });
@@ -34,7 +37,7 @@ router.post("/paycrest", async (req, res) => {
 		// 3. Verify signature
 		const secret = process.env.PAY_CREST_API_SECRET;
 		if (!secret) {
-			console.error("Missing PAY_CREST_API_SECRET in env");
+			console.error("❌ Missing PAY_CREST_API_SECRET in env");
 			return res
 				.status(500)
 				.json({ error: "Server configuration error" });
@@ -42,50 +45,67 @@ router.post("/paycrest", async (req, res) => {
 
 		const valid = verifyPaycrestSignature(rawBody, signature, secret);
 		if (!valid) {
-			console.warn("Webhook signature verification failed");
+			console.warn("❌ Webhook signature verification FAILED");
+			console.log("Received signature:", signature);
+			console.log(
+				"Body (first 100 chars):",
+				rawBody.toString("utf8").substring(0, 100)
+			);
 			return res.status(401).json({ error: "Invalid signature" });
 		}
+
+		console.log("✅ Signature verified!");
 
 		// 4. Parse payload
 		const payload = JSON.parse(rawBody.toString("utf8"));
 		const { event, data } = payload || {};
 		const orderId = data?.id;
 
-		console.log("✅ Paycrest webhook:", {
+		console.log("📦 Webhook payload:", {
 			event,
 			orderId,
-			status: data?.status,
+			rawStatus: data?.status,
 		});
 
 		if (!orderId) {
+			console.warn("❌ Missing order ID in webhook payload");
 			return res
 				.status(400)
 				.json({ error: "Missing order id in webhook" });
 		}
 
-		// 5. Locate transaction
+		// 5. Find transaction by orderId
 		let txn = await Transaction.findOne({ orderId }).exec();
-		if (!txn) {
-			// fallback: try with external id if you ever stored differently
-			txn = await Transaction.findOne({
-				externalOrderId: orderId,
-			}).exec();
-		}
 
 		if (!txn) {
-			console.warn("⚠️ Webhook for unknown transaction:", orderId);
+			console.warn(
+				`⚠️ Transaction not found for orderId: ${orderId}`
+			);
 			return res.status(404).json({ error: "Transaction not found" });
 		}
 
-		// 6. Map status
-		const mappedStatus = mapPaycrestStatus(data?.status || event);
+		console.log(
+			`📝 Found transaction: ${txn._id}, current status: ${txn.status}`
+		);
 
-		// Update only if different (avoid spam writes)
+		// 6. Map Paycrest status to our DB status
+		// Use the status from data.status OR fallback to event name
+		const paycrestStatus = data?.status || event;
+		const mappedStatus = mapPaycrestStatus(paycrestStatus);
+
+		console.log(
+			`🔄 Status mapping: "${paycrestStatus}" -> "${mappedStatus}"`
+		);
+
+		// 7. Update transaction if status changed
 		if (txn.status !== mappedStatus) {
 			txn.status = mappedStatus;
+			console.log(
+				`✏️ Updated status from "${txn.status}" to "${mappedStatus}"`
+			);
 		}
 
-		// Save raw webhook for auditing/debug
+		// 8. Store webhook data for debugging
 		txn.lastWebhook = {
 			receivedAt: new Date(),
 			raw: payload,
@@ -94,13 +114,19 @@ router.post("/paycrest", async (req, res) => {
 		await txn.save();
 
 		console.log(
-			`✅ Transaction ${txn._id} updated -> ${mappedStatus}`
+			`✅ Transaction ${txn._id} saved with status: ${txn.status}`
 		);
 
-		return res.status(200).json({ success: true });
+		// 9. Send success response (ONLY ONCE!)
+		return res.status(200).json({
+			success: true,
+			transactionId: txn._id,
+			status: txn.status,
+		});
 	} catch (err) {
-		console.error("❌ Webhook handler error:", err.message || err);
-		return res.status(500).json({ error: "Server error" });
+		console.error("❌ Webhook handler error:", err.message);
+		console.error(err.stack);
+		return res.status(500).json({ error: "Internal server error" });
 	}
 });
 
