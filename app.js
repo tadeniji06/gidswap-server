@@ -30,12 +30,11 @@ app.use(cookieParser());
 // Webhook: Paycrest requires raw body
 app.use(
 	"/api/webhooks/paycrest",
-	express.raw({ type: "application/json", limit: "10mb" })
+	express.raw({ type: "application/json", limit: "10mb" }),
 );
 
 // JSON parser for all other routes
 app.use(express.json({ limit: "10mb" }));
-
 
 app.get("/api/ping", (req, res) => {
 	res.status(200).json({
@@ -55,6 +54,7 @@ const payCrestRoutes = require("./routes/payCrestRoutes");
 const userRoutes = require("./routes/userRoutes");
 const webhookRouter = require("./routes/payCrestWebhook");
 const transactionRoutes = require("./routes/transactionRoutes");
+const rewardsRoutes = require("./routes/rewardsRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
@@ -62,6 +62,7 @@ app.use("/api/transactions", authMiddlewares, transactionRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 app.use("/api/webhooks", webhookRouter);
+app.use("/api/rewards", rewardsRoutes);
 
 // ----------------------
 // Self-Ping to Prevent Idle Shutdown

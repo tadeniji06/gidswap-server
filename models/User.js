@@ -16,6 +16,9 @@ const userSchema = new mongoose.Schema({
 	lastLoginUserAgent: { type: String },
 	lastLoginAt: { type: Date },
 
+	// Reward points system
+	rewardPoints: { type: Number, default: 0 },
+
 	createdAt: { type: Date, default: Date.now },
 });
 

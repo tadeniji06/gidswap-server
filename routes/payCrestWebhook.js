@@ -4,6 +4,9 @@ const {
 	verifyPaycrestSignature,
 } = require("../utils/paycrestSignature");
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
+const {
+	awardPointsForTransaction,
+} = require("../utils/rewardsHelper");
 
 const router = express.Router();
 
@@ -49,7 +52,7 @@ router.post("/paycrest", async (req, res) => {
 			console.log("Received signature:", signature);
 			console.log(
 				"Body (first 100 chars):",
-				rawBody.toString("utf8").substring(0, 100)
+				rawBody.toString("utf8").substring(0, 100),
 			);
 			return res.status(401).json({ error: "Invalid signature" });
 		}
@@ -79,13 +82,13 @@ router.post("/paycrest", async (req, res) => {
 
 		if (!txn) {
 			console.warn(
-				`⚠️ Transaction not found for orderId: ${orderId}`
+				`⚠️ Transaction not found for orderId: ${orderId}`,
 			);
 			return res.status(404).json({ error: "Transaction not found" });
 		}
 
 		console.log(
-			`📝 Found transaction: ${txn._id}, current status: ${txn.status}`
+			`📝 Found transaction: ${txn._id}, current status: ${txn.status}`,
 		);
 
 		// 6. Map Paycrest status to our DB status
@@ -94,14 +97,14 @@ router.post("/paycrest", async (req, res) => {
 		const mappedStatus = mapPaycrestStatus(paycrestStatus);
 
 		console.log(
-			`🔄 Status mapping: "${paycrestStatus}" -> "${mappedStatus}"`
+			`🔄 Status mapping: "${paycrestStatus}" -> "${mappedStatus}"`,
 		);
 
 		// 7. Update transaction if status changed
 		if (txn.status !== mappedStatus) {
 			txn.status = mappedStatus;
 			console.log(
-				`✏️ Updated status from "${txn.status}" to "${mappedStatus}"`
+				`✏️ Updated status from "${txn.status}" to "${mappedStatus}"`,
 			);
 		}
 
@@ -114,10 +117,31 @@ router.post("/paycrest", async (req, res) => {
 		await txn.save();
 
 		console.log(
-			`✅ Transaction ${txn._id} saved with status: ${txn.status}`
+			`✅ Transaction ${txn._id} saved with status: ${txn.status}`,
 		);
 
-		// 9. Send success response (ONLY ONCE!)
+		// 10. Auto-award points for successful transactions
+		if (
+			["fulfilled", "validated", "settled"].includes(mappedStatus)
+		) {
+			console.log(
+				`🎁 Attempting to award points for transaction ${txn._id}`,
+			);
+			const rewardResult = await awardPointsForTransaction(
+				txn.user,
+				txn._id,
+				txn.amount,
+			);
+			if (rewardResult.success) {
+				console.log(
+					`✅ ${rewardResult.message}: ${rewardResult.points} points`,
+				);
+			} else {
+				console.log(`ℹ️ ${rewardResult.message}`);
+			}
+		}
+
+		// 11. Send success response (ONLY ONCE!)
 		return res.status(200).json({
 			success: true,
 			transactionId: txn._id,

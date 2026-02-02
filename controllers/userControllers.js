@@ -22,6 +22,7 @@ exports.getUserProfile = async (req, res) => {
 				lastLoginUserAgent: user.lastLoginUserAgent,
 				lastLoginAt: user.lastLoginAt,
 				createdAt: user.createdAt,
+				rewardPoints: user.rewardPoints || 0,
 			},
 		});
 	} catch (error) {
@@ -37,8 +38,8 @@ exports.updateProfile = async (req, res) => {
 		const userId = req.user._id;
 
 		if (!fullName || fullName.trim().length === 0) {
-			return res.status(400).json({ 
-				message: "Full name is required." 
+			return res.status(400).json({
+				message: "Full name is required.",
 			});
 		}
 
@@ -46,7 +47,7 @@ exports.updateProfile = async (req, res) => {
 		const updatedUser = await User.findByIdAndUpdate(
 			userId,
 			{ fullName: fullName.trim() },
-			{ new: true, runValidators: true }
+			{ new: true, runValidators: true },
 		);
 
 		if (!updatedUser) {
@@ -74,16 +75,16 @@ exports.updateEmail = async (req, res) => {
 		const userId = req.user._id;
 
 		if (!newEmail || !password) {
-			return res.status(400).json({ 
-				message: "New email and current password are required." 
+			return res.status(400).json({
+				message: "New email and current password are required.",
 			});
 		}
 
 		// Validate email format
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		if (!emailRegex.test(newEmail)) {
-			return res.status(400).json({ 
-				message: "Invalid email format." 
+			return res.status(400).json({
+				message: "Invalid email format.",
 			});
 		}
 
@@ -94,18 +95,24 @@ exports.updateEmail = async (req, res) => {
 		}
 
 		// Verify current password
-		const isPasswordValid = await bcrypt.compare(password, user.password);
+		const isPasswordValid = await bcrypt.compare(
+			password,
+			user.password,
+		);
 		if (!isPasswordValid) {
-			return res.status(401).json({ 
-				message: "Invalid current password." 
+			return res.status(401).json({
+				message: "Invalid current password.",
 			});
 		}
 
 		// Check if new email already exists
 		const existingUser = await User.findOne({ email: newEmail });
-		if (existingUser && existingUser._id.toString() !== userId.toString()) {
-			return res.status(409).json({ 
-				message: "Email already in use." 
+		if (
+			existingUser &&
+			existingUser._id.toString() !== userId.toString()
+		) {
+			return res.status(409).json({
+				message: "Email already in use.",
 			});
 		}
 
@@ -113,7 +120,7 @@ exports.updateEmail = async (req, res) => {
 		const updatedUser = await User.findByIdAndUpdate(
 			userId,
 			{ email: newEmail },
-			{ new: true, runValidators: true }
+			{ new: true, runValidators: true },
 		);
 
 		// Generate new JWT with updated info
@@ -143,15 +150,15 @@ exports.changePassword = async (req, res) => {
 		const userId = req.user._id;
 
 		if (!currentPassword || !newPassword) {
-			return res.status(400).json({ 
-				message: "Current password and new password are required." 
+			return res.status(400).json({
+				message: "Current password and new password are required.",
 			});
 		}
 
 		// Validate new password length
 		if (newPassword.length < 6) {
-			return res.status(400).json({ 
-				message: "New password must be at least 6 characters long." 
+			return res.status(400).json({
+				message: "New password must be at least 6 characters long.",
 			});
 		}
 
@@ -162,10 +169,13 @@ exports.changePassword = async (req, res) => {
 		}
 
 		// Verify current password
-		const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+		const isCurrentPasswordValid = await bcrypt.compare(
+			currentPassword,
+			user.password,
+		);
 		if (!isCurrentPasswordValid) {
-			return res.status(401).json({ 
-				message: "Invalid current password." 
+			return res.status(401).json({
+				message: "Invalid current password.",
 			});
 		}
 
@@ -173,8 +183,8 @@ exports.changePassword = async (req, res) => {
 		const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
 		// Update password
-		await User.findByIdAndUpdate(userId, { 
-			password: hashedNewPassword 
+		await User.findByIdAndUpdate(userId, {
+			password: hashedNewPassword,
 		});
 
 		res.status(200).json({
@@ -215,8 +225,8 @@ exports.deleteAccount = async (req, res) => {
 		const userId = req.user._id;
 
 		if (!password) {
-			return res.status(400).json({ 
-				message: "Password is required to delete account." 
+			return res.status(400).json({
+				message: "Password is required to delete account.",
 			});
 		}
 
@@ -227,10 +237,13 @@ exports.deleteAccount = async (req, res) => {
 		}
 
 		// Verify password
-		const isPasswordValid = await bcrypt.compare(password, user.password);
+		const isPasswordValid = await bcrypt.compare(
+			password,
+			user.password,
+		);
 		if (!isPasswordValid) {
-			return res.status(401).json({ 
-				message: "Invalid password." 
+			return res.status(401).json({
+				message: "Invalid password.",
 			});
 		}
 
