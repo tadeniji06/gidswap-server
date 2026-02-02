@@ -15,78 +15,94 @@ const calculatePoints = (amountInUSD) => {
  * This function calculates points from ALL successful transactions
  * and updates the user's total reward points
  */
-exports.recalculateUserPoints = async (req, res) => {
-	try {
-		const userId = req.user._id;
+const _syncUserPoints = async (userId) => {
+	// Find all successful/fulfilled transactions for this user
+	const successfulTransactions = await Transaction.find({
+		user: userId,
+		status: {
+			$in: ["fulfilled", "validated", "settled", "completed"],
+		}, // Added 'completed' just in case
+	});
 
-		// Find all successful/fulfilled transactions for this user
-		const successfulTransactions = await Transaction.find({
+	// Calculate total points from all successful transactions
+	let totalEarnedPoints = 0;
+	const rewardRecords = [];
+
+	for (const transaction of successfulTransactions) {
+		// Check if reward already exists for this transaction
+		const existingReward = await Reward.findOne({
 			user: userId,
-			status: { $in: ["fulfilled", "validated", "settled"] },
+			transaction: transaction._id,
+			type: "earned",
 		});
 
-		// Calculate total points from all successful transactions
-		let totalEarnedPoints = 0;
-		const rewardRecords = [];
+		if (!existingReward && transaction.amount) {
+			const points = calculatePoints(transaction.amount);
 
-		for (const transaction of successfulTransactions) {
-			// Check if reward already exists for this transaction
-			const existingReward = await Reward.findOne({
-				user: userId,
-				transaction: transaction._id,
-				type: "earned",
-			});
-
-			if (!existingReward && transaction.amount) {
-				const points = calculatePoints(transaction.amount);
+			// Only award positive points
+			if (points > 0) {
 				totalEarnedPoints += points;
 
 				// Create reward record
-				rewardRecords.push({
+				// We do this sequentially to avoid race conditions on first sync
+				await Reward.create({
 					user: userId,
 					type: "earned",
 					points: points,
 					transaction: transaction._id,
 					description: `Earned ${points} points from swap of $${transaction.amount}`,
 				});
-			} else if (existingReward) {
-				totalEarnedPoints += existingReward.points;
 			}
+		} else if (existingReward) {
+			totalEarnedPoints += existingReward.points;
 		}
+	}
 
-		// Insert new reward records if any
-		if (rewardRecords.length > 0) {
-			await Reward.insertMany(rewardRecords);
-		}
+	// Calculate total withdrawn points
+	const withdrawals = await Reward.find({
+		user: userId,
+		type: "withdrawn",
+		"withdrawalDetails.status": { $ne: "failed" }, // Exclude failed withdrawals
+	});
 
-		// Calculate total withdrawn points
-		const withdrawals = await Reward.find({
-			user: userId,
-			type: "withdrawn",
-			"withdrawalDetails.status": "completed",
-		});
+	const totalWithdrawnPoints = withdrawals.reduce(
+		(sum, w) => sum + Math.abs(w.points),
+		0,
+	);
 
-		const totalWithdrawnPoints = withdrawals.reduce(
-			(sum, w) => sum + Math.abs(w.points),
-			0,
-		);
+	// Calculate current balance
+	const currentBalance = totalEarnedPoints - totalWithdrawnPoints;
 
-		// Calculate current balance
-		const currentBalance = totalEarnedPoints - totalWithdrawnPoints;
+	// Update user's reward points
+	await User.findByIdAndUpdate(userId, {
+		rewardPoints: currentBalance,
+	});
 
-		// Update user's reward points
-		await User.findByIdAndUpdate(userId, {
-			rewardPoints: currentBalance,
-		});
+	return {
+		totalEarnedPoints,
+		totalWithdrawnPoints,
+		currentBalance,
+		newlyAdded: rewardRecords.length,
+	};
+};
+
+/**
+ * RECALCULATE AND SYNC USER POINTS
+ * This function calculates points from ALL successful transactions
+ * and updates the user's total reward points
+ */
+exports.recalculateUserPoints = async (req, res) => {
+	try {
+		const userId = req.user._id;
+		const result = await _syncUserPoints(userId);
 
 		res.status(200).json({
 			success: true,
 			message: "Points recalculated successfully",
 			data: {
-				totalEarned: totalEarnedPoints,
-				totalWithdrawn: totalWithdrawnPoints,
-				currentBalance: currentBalance,
-				newRewardsAdded: rewardRecords.length,
+				totalEarned: result.totalEarnedPoints,
+				totalWithdrawn: result.totalWithdrawnPoints,
+				currentBalance: result.currentBalance,
 			},
 		});
 	} catch (error) {
@@ -107,6 +123,10 @@ exports.getRewardsSummary = async (req, res) => {
 	try {
 		const userId = req.user._id;
 
+		// AUTO-SYNC: Ensure points are up to date before showing summary
+		// This fixes the issue where existing users see 0 points
+		await _syncUserPoints(userId);
+
 		// Get user's current balance
 		const user = await User.findById(userId);
 
@@ -124,7 +144,7 @@ exports.getRewardsSummary = async (req, res) => {
 		const withdrawals = await Reward.find({
 			user: userId,
 			type: "withdrawn",
-			"withdrawalDetails.status": "completed",
+			"withdrawalDetails.status": { $ne: "failed" },
 		});
 		const totalWithdrawn = withdrawals.reduce(
 			(sum, w) => sum + Math.abs(w.points),
@@ -145,7 +165,7 @@ exports.getRewardsSummary = async (req, res) => {
 				totalWithdrawn,
 				minimumWithdrawal: 5000,
 				conversionRate: "1 point = 1 Naira",
-				canWithdraw: user.rewardPoints >= 5000,
+				canWithdraw: (user.rewardPoints || 0) >= 5000,
 				recentActivity: recentRewards,
 			},
 		});
