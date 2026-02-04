@@ -24,9 +24,21 @@ const PAYCREST_BASE =
 router.post("/init-order", authMiddleware, async (req, res) => {
 	try {
 		console.log("🚀 Initializing order for user:", req.user._id);
+		console.log(
+			"📩 Payload received:",
+			JSON.stringify(req.body, null, 2),
+		);
+
+		// Normalize payload: ensure token is uppercase
+		const payload = {
+			...req.body,
+			token: req.body.token
+				? req.body.token.toUpperCase()
+				: undefined,
+		};
 
 		// Call Paycrest API via controller
-		const result = await initOrder(req.body);
+		const result = await initOrder(payload);
 		const orderData = result?.data;
 
 		console.log("📦 Paycrest response:", orderData);
@@ -45,8 +57,8 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 			orderId: orderData.id, // Paycrest order ID
 			user: req.user._id,
 			status: "pending",
-			amount: req.body.amount || orderData.amount,
-			currency: req.body.token || orderData.token,
+			amount: payload.amount || orderData.amount,
+			currency: payload.token || orderData.token,
 			network: req.body.network,
 			receiveAddress: orderData.receiveAddress,
 			reference: req.body.reference,
@@ -66,7 +78,7 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 	} catch (error) {
 		console.error(
 			"❌ Init order error:",
-			error.response?.data || error.message || error
+			error.response?.data || error.message || error,
 		);
 		return res.status(500).json({
 			success: false,
@@ -87,7 +99,7 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 		const userId = req.user._id;
 
 		console.log(
-			`📊 Status check for orderId: ${orderId}, user: ${userId}`
+			`📊 Status check for orderId: ${orderId}, user: ${userId}`,
 		);
 
 		// Find transaction
@@ -161,7 +173,7 @@ router.get(
 
 			// Call Paycrest API
 			const url = `${PAYCREST_BASE}/sender/orders/${encodeURIComponent(
-				orderId
+				orderId,
 			)}`;
 			console.log("📞 Calling Paycrest:", url);
 
@@ -176,7 +188,7 @@ router.get(
 			if (paycrestRes.status === 404) {
 				console.warn(
 					"⚠️ Paycrest returned 404 for orderId:",
-					orderId
+					orderId,
 				);
 				return res.status(404).json({
 					success: false,
@@ -189,7 +201,7 @@ router.get(
 				console.error(
 					"❌ Paycrest error:",
 					paycrestRes.status,
-					paycrestRes.data
+					paycrestRes.data,
 				);
 				return res.status(500).json({
 					success: false,
@@ -221,7 +233,7 @@ router.get(
 				txn.paycrestData = order;
 				await txn.save();
 				console.log(
-					`✏️ Updated txn ${txn._id}: ${oldStatus} -> ${mapped}`
+					`✏️ Updated txn ${txn._id}: ${oldStatus} -> ${mapped}`,
 				);
 			} else {
 				console.log(`ℹ️ Status unchanged: ${mapped}`);
@@ -244,7 +256,7 @@ router.get(
 		} catch (error) {
 			console.error(
 				"❌ Refresh error:",
-				error.response?.data || error.message || error
+				error.response?.data || error.message || error,
 			);
 			return res.status(500).json({
 				success: false,
@@ -252,7 +264,7 @@ router.get(
 				details: error.response?.data || error.message,
 			});
 		}
-	}
+	},
 );
 
 /**
