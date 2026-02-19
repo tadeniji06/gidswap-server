@@ -4,13 +4,13 @@ const User = require("../models/User");
 const DOJAH_BASE_URL =
 	process.env.DOJAH_BASE_URL || "https://api.dojah.io";
 const DOJAH_APP_ID = process.env.DOJAH_APP_ID;
-const DOJAH_API_KEY = process.env.DOJAH_API_KEY; // Authorization header
+const DOJAH_API_KEY = process.env.DOJAH_PRIVATE_KEY; // Authorization header
 
 const dojahClient = axios.create({
 	baseURL: DOJAH_BASE_URL,
 	headers: {
 		AppId: DOJAH_APP_ID,
-		Authorization: DOJAH_API_KEY,
+		Authorization: DOJAH_API_KEY, // The documentation expects the secret key here
 		"Content-Type": "application/json",
 	},
 });
@@ -171,8 +171,14 @@ exports.verifySelfie = async (req, res) => {
 				? "/api/v1/kyc/bvn/verify"
 				: "/api/v1/kyc/nin/verify";
 
+		// Strip the data URI prefix if present (e.g. "data:image/jpeg;base64,")
+		const cleanedSelfieImage = selfieImage.replace(
+			/^data:image\/[a-z]+;base64,/,
+			"",
+		);
+
 		const payload = {
-			selfie_image: selfieImage,
+			selfie_image: cleanedSelfieImage,
 			[idType]: idValue,
 		};
 
