@@ -55,6 +55,7 @@ const userRoutes = require("./routes/userRoutes");
 const webhookRouter = require("./routes/payCrestWebhook");
 const transactionRoutes = require("./routes/transactionRoutes");
 const rewardsRoutes = require("./routes/rewardsRoutes");
+const kycRoutes = require("./routes/kycRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
@@ -63,6 +64,7 @@ app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/rewards", rewardsRoutes);
+app.use("/api/kyc", kycRoutes);
 
 // ----------------------
 // Self-Ping to Prevent Idle Shutdown

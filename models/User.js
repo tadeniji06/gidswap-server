@@ -19,6 +19,29 @@ const userSchema = new mongoose.Schema({
 	// Reward points system
 	rewardPoints: { type: Number, default: 0 },
 
+	// KYC / Dojah Verification
+	kyc: {
+		status: {
+			type: String,
+			enum: ["unverified", "pending", "verified", "failed"],
+			default: "unverified",
+		},
+		tier: { type: Number, default: 0 }, // 0=none, 1=id(bvn/nin), 2=selfie, etc.
+		method: { type: String, enum: ["bvn", "nin"], default: "bvn" }, // Track which ID method used
+		bvn: { type: String }, // Store encrypted in production!
+		nin: { type: String },
+		firstName: String,
+		lastName: String,
+		middleName: String,
+		dateOfBirth: String,
+		phoneNumber: String,
+		gender: String,
+		selfieUrl: String,
+		verificationReference: String,
+		lastVerifiedAt: Date,
+		failureReason: String,
+	},
+
 	createdAt: { type: Date, default: Date.now },
 });
 
