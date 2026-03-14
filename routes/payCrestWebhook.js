@@ -1,5 +1,6 @@
 const express = require("express");
 const Transaction = require("../models/Transactions");
+const OnrampSession = require("../models/OnrampSession");
 const {
 	verifyPaycrestSignature,
 } = require("../utils/paycrestSignature");
@@ -77,12 +78,20 @@ router.post("/paycrest", async (req, res) => {
 				.json({ error: "Missing order id in webhook" });
 		}
 
-		// 5. Find transaction by orderId
+		// 5. Find transaction or onramp session by orderId
 		let txn = await Transaction.findOne({ orderId }).exec();
+		let isOnrampSession = false;
+
+		if (!txn) {
+			txn = await OnrampSession.findOne({ "payCrest.orderId": orderId }).exec();
+			if (txn) {
+				isOnrampSession = true;
+			}
+		}
 
 		if (!txn) {
 			console.warn(
-				`⚠️ Transaction not found for orderId: ${orderId}`,
+				`⚠️ Transaction/Session not found for orderId: ${orderId}`,
 			);
 			return res.status(404).json({ error: "Transaction not found" });
 		}
@@ -101,52 +110,84 @@ router.post("/paycrest", async (req, res) => {
 		);
 
 		// 7. Update transaction if status changed
-		if (txn.status !== mappedStatus) {
-			txn.status = mappedStatus;
-			console.log(
-				`✏️ Updated status from "${txn.status}" to "${mappedStatus}"`,
-			);
-		}
+		if (isOnrampSession) {
+			if (txn.payCrest.pcStatus !== paycrestStatus) {
+				txn.payCrest.pcStatus = paycrestStatus;
+				txn.payCrest.pcRawResponse = data;
 
-		// 8. Store webhook data for debugging
-		txn.lastWebhook = {
-			receivedAt: new Date(),
-			raw: payload,
-		};
+				// Translate to our pipeline status
+				if (mappedStatus === "fulfilled" || mappedStatus === "validated" || mappedStatus === "settled") {
+					txn.status = "completed";
+					txn.completedAt = new Date();
+					txn.finalNGN =
+						data?.amountReceived ||
+						data?.fiatAmount ||
+						txn.estimatedNGN;
+				} else if (mappedStatus === "processing") {
+					txn.status = "pc_processing";
+				} else if (["failed", "cancelled", "refunded", "expired"].includes(mappedStatus)) {
+					txn.status = "failed";
+					txn.errorStage = "pc";
+					txn.errorMessage = `PayCrest order ${mappedStatus}`;
+				}
 
-		await txn.save();
-
-		console.log(
-			`✅ Transaction ${txn._id} saved with status: ${txn.status}`,
-		);
-
-		// 10. Auto-award points for successful transactions
-		if (
-			["fulfilled", "validated", "settled"].includes(mappedStatus)
-		) {
-			console.log(
-				`🎁 Attempting to award points for transaction ${txn._id}`,
-			);
-			const rewardResult = await awardPointsForTransaction(
-				txn.user,
-				txn._id,
-				txn.amount,
-			);
-			if (rewardResult.success) {
-				console.log(
-					`✅ ${rewardResult.message}: ${rewardResult.points} points`,
-				);
-			} else {
-				console.log(`ℹ️ ${rewardResult.message}`);
+				await txn.save();
+				console.log(`✅ OnrampSession ${txn._id} updated via webhook to: ${txn.status}`);
 			}
-		}
+			
+			return res.status(200).json({
+				success: true,
+				sessionId: txn._id,
+				status: txn.status,
+			});
+		} else {
+			if (txn.status !== mappedStatus) {
+				txn.status = mappedStatus;
+				console.log(
+					`✏️ Updated status from "${txn.status}" to "${mappedStatus}"`,
+				);
+			}
 
-		// 11. Send success response (ONLY ONCE!)
-		return res.status(200).json({
-			success: true,
-			transactionId: txn._id,
-			status: txn.status,
-		});
+			// 8. Store webhook data for debugging
+			txn.lastWebhook = {
+				receivedAt: new Date(),
+				raw: payload,
+			};
+
+			await txn.save();
+
+			console.log(
+				`✅ Transaction ${txn._id} saved with status: ${txn.status}`,
+			);
+
+			// 10. Auto-award points for successful transactions
+			if (
+				["fulfilled", "validated", "settled"].includes(mappedStatus)
+			) {
+				console.log(
+					`🎁 Attempting to award points for transaction ${txn._id}`,
+				);
+				const rewardResult = await awardPointsForTransaction(
+					txn.user,
+					txn._id,
+					txn.amount,
+				);
+				if (rewardResult.success) {
+					console.log(
+						`✅ ${rewardResult.message}: ${rewardResult.points} points`,
+					);
+				} else {
+					console.log(`ℹ️ ${rewardResult.message}`);
+				}
+			}
+
+			// 11. Send success response (ONLY ONCE!)
+			return res.status(200).json({
+				success: true,
+				transactionId: txn._id,
+				status: txn.status,
+			});
+		}
 	} catch (err) {
 		console.error("❌ Webhook handler error:", err.message);
 		console.error(err.stack);
