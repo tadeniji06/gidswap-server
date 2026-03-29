@@ -89,36 +89,78 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 });
 
 /**
- * Get transaction status from YOUR database (for frontend polling)
+ * Get (and live-refresh) transaction status
  * GET /api/payCrest/trade/status/:orderId
- * 🔥 This is what the frontend polls every 3 seconds!
+ *
+ * This is polled by the frontend every 3 seconds.
+ * On each call it:
+ *   1. Finds the transaction in DB
+ *   2. If not yet completed, queries PayCrest directly for the latest status
+ *   3. Updates DB if status changed
+ *   4. Returns the merged result
+ *
+ * Treats `validated` as the completion signal — user has received their fiat.
+ * No need to wait for `settled`.
  */
 router.get("/status/:orderId", authMiddleware, async (req, res) => {
 	try {
 		const { orderId } = req.params;
 		const userId = req.user._id;
 
-		console.log(
-			`📊 Status check for orderId: ${orderId}, user: ${userId}`,
-		);
+		console.log(`📊 [Status] Poll for orderId: ${orderId}, user: ${userId}`);
 
-		// Find transaction
-		const txn = await Transaction.findOne({
-			orderId,
-			user: userId,
-		}).exec();
+		// ── Step 1: Find local transaction ──────────────────────────
+		const txn = await Transaction.findOne({ orderId, user: userId }).exec();
 
 		if (!txn) {
-			console.warn(`⚠️ Transaction not found: ${orderId}`);
-			return res.status(404).json({
-				success: false,
-				message: "Transaction not found",
-			});
+			return res.status(404).json({ success: false, message: "Transaction not found" });
 		}
 
-		console.log(`✅ Transaction found, status: ${txn.status}`);
+		// ── Step 2: For terminal statuses, return from DB directly ──
+		// validated/fulfilled/settled/cancelled/refunded = no need to keep polling PayCrest
+		const TERMINAL_STATUSES = ["validated", "fulfilled", "settled", "cancelled", "refunded", "expired", "failed"];
 
-		// Return in the same format your frontend expects
+		if (!TERMINAL_STATUSES.includes(txn.status)) {
+			// ── Step 3: Live-query PayCrest ─────────────────────────
+			try {
+				const pcUrl = `${PAYCREST_BASE}/sender/orders/${encodeURIComponent(orderId)}`;
+				const pcRes = await axios.get(pcUrl, {
+					headers: { "API-Key": process.env.PAY_CREST_API_KEY, Accept: "application/json" },
+					validateStatus: null,
+					timeout: 8000,
+				});
+
+				if (pcRes.status === 200) {
+					const pcOrder = pcRes.data;
+					const rawStatus =
+						pcOrder?.data?.status ||
+						pcOrder?.status ||
+						pcOrder?.data?.event ||
+						pcOrder?.event;
+
+					if (rawStatus) {
+						const mapped = mapPaycrestStatus(rawStatus);
+						if (mapped && mapped !== txn.status) {
+							console.log(`🔄 [Status] ${orderId}: ${txn.status} → ${mapped} (PayCrest: ${rawStatus})`);
+							txn.status = mapped;
+							txn.lastPolledAt = new Date();
+							txn.lastPaycrestResponse = pcOrder;
+							await txn.save();
+						}
+					}
+				}
+			} catch (pcErr) {
+				// Non-fatal — return DB value if PayCrest is temporarily unreachable
+				console.warn(`⚠️ [Status] PayCrest poll failed for ${orderId}:`, pcErr.message);
+			}
+		}
+
+		// ── Step 4: Derive a client-facing "isCompleted" flag ───────
+		// validated = user has received fiat. settled = blockchain settlement.
+		// Both mean "done" from the user's perspective.
+		const isCompleted = ["validated", "fulfilled", "settled"].includes(txn.status);
+
+		// ── Step 5: Return unified response ─────────────────────────
 		return res.status(200).json({
 			id: txn.orderId,
 			reference: txn.reference || txn.orderId,
@@ -129,16 +171,13 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			senderFee: "0",
 			transactionFee: "0",
 			validUntil: txn.validUntil || "",
-			status: txn.status, // 🎯 This is the key field!
+			status: txn.status,
+			isCompleted,           // 🎯 true once validated/fulfilled/settled
 			updatedAt: txn.updatedAt,
 		});
 	} catch (error) {
-		console.error("❌ Status check error:", error);
-		return res.status(500).json({
-			success: false,
-			message: "Failed to fetch status",
-			error: error.message,
-		});
+		console.error("❌ [Status] Error:", error);
+		return res.status(500).json({ success: false, message: "Failed to fetch status", error: error.message });
 	}
 });
 
