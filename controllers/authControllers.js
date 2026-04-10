@@ -1,7 +1,8 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const emailjs = require("@emailjs/nodejs");
+const { sendOtpEmail } = require("../utils/emailService");
+const crypto = require("crypto");
 const {
 	getClientIP,
 	getUserAgent,
@@ -36,7 +37,11 @@ exports.signUp = async (req, res) => {
 		// Hash password
 		const hashedPassword = await bcrypt.hash(password, 12);
 
-		// Create user with IP and User-Agent info
+		// Generate 6-digit OTP
+		const otp = Math.floor(100000 + Math.random() * 900000).toString();
+		const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+		// Create user
 		const user = new User({
 			fullName,
 			email,
@@ -46,31 +51,84 @@ exports.signUp = async (req, res) => {
 			lastLoginIP: ipAddress,
 			lastLoginUserAgent: userAgent,
 			lastLoginAt: new Date(),
+			isVerified: false,
+			currentOtp: {
+				code: otp,
+				expiresAt: otpExpires,
+			},
 		});
 
 		await user.save();
 
-		// Generate JWT
-		const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
-			expiresIn: "7d",
-		});
+		// Send verification email
+		try {
+			await sendOtpEmail(email, otp, "verification");
+		} catch (emailErr) {
+			console.error("Failed to send signup OTP:", emailErr);
+			// We still allow signup to succeed, user can resend OTP later
+		}
 
 		console.log(
-			`New user signup - IP: ${ipAddress}, User-Agent: ${userAgent}`
+			`👤 New user signup: ${email} - IP: ${ipAddress}, User-Agent: ${userAgent}`
 		);
 
 		res.status(201).json({
-			message: "Signup successful",
+			success: true,
+			message: "Signup successful. Please verify your email.",
+			email: email,
+			isVerified: false
+		});
+	} catch (error) {
+		console.error("Signup error:", error);
+		res.status(500).json({ success: false, message: "Internal server error." });
+	}
+};
+
+// VERIFY EMAIL Controller
+exports.verifyEmail = async (req, res) => {
+	try {
+		const { email, otp } = req.body;
+		if (!email || !otp) {
+			return res.status(400).json({ success: false, message: "Email and OTP are required" });
+		}
+
+		const user = await User.findOne({ email });
+		if (!user) {
+			return res.status(404).json({ success: false, message: "User not found" });
+		}
+
+		if (user.isVerified) {
+			return res.status(400).json({ success: false, message: "Email already verified" });
+		}
+
+		if (!user.currentOtp || user.currentOtp.code !== otp) {
+			return res.status(400).json({ success: false, message: "Invalid OTP" });
+		}
+
+		if (new Date() > user.currentOtp.expiresAt) {
+			return res.status(400).json({ success: false, message: "OTP has expired" });
+		}
+
+		// Success
+		user.isVerified = true;
+		user.currentOtp = undefined; // Clear OTP
+		await user.save();
+
+		const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: "7d" });
+
+		res.status(200).json({
+			success: true,
+			message: "Email verified successfully",
 			token,
 			user: {
 				id: user._id,
 				fullName: user.fullName,
 				email: user.email,
-			},
+			}
 		});
 	} catch (error) {
-		console.error("Signup error:", error);
-		res.status(500).json({ message: "Internal server error." });
+		console.error("Verify email error:", error);
+		res.status(500).json({ success: false, message: "Internal server error" });
 	}
 };
 
@@ -128,6 +186,28 @@ exports.login = async (req, res) => {
 				.json({ message: "Invalid credentials." });
 		}
 
+		// Check if verified
+		if (!user.isVerified) {
+			// Resend OTP so they can verify now
+			const otp = Math.floor(100000 + Math.random() * 900000).toString();
+			user.currentOtp = {
+				code: otp,
+				expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+			};
+			await user.save();
+			
+			try {
+				await sendOtpEmail(user.email, otp, "verification");
+			} catch (e) {}
+
+			return res.status(403).json({ 
+				success: false, 
+				message: "Email not verified. A new OTP has been sent.",
+				isVerified: false,
+				email: user.email
+			});
+		}
+
 		// Get IP and User-Agent for login tracking
 		const ipAddress = getClientIP(req);
 		const userAgent = getUserAgent(req);
@@ -166,79 +246,65 @@ exports.login = async (req, res) => {
 	}
 };
 
-const otpStore = {};
-
-// Generate 6-digit OTP
-const generateOtp = () =>
-	Math.floor(100000 + Math.random() * 900000).toString();
-
-// REQUEST OTP
+// REQUEST OTP (Forgot Password)
 exports.requestOtp = async (req, res) => {
 	try {
 		const { email } = req.body;
 		if (!email)
-			return res.status(400).json({ message: "Email is required." });
+			return res.status(400).json({ success: false, message: "Email is required." });
 
 		const user = await User.findOne({ email });
 		if (!user)
-			return res.status(404).json({ message: "User not found." });
+			return res.status(404).json({ success: false, message: "No account found with this email." });
 
-		const otp = generateOtp();
-		otpStore[email] = {
+		const otp = Math.floor(100000 + Math.random() * 900000).toString();
+		user.currentOtp = {
 			code: otp,
-			expiresAt: Date.now() + 5 * 60 * 1000,
-		}; // 5 mins
+			expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+		};
+		await user.save();
 
-		// send email via EmailJS
-		await emailjs.send(
-			process.env.EMAIL_JS_SERVICE_ID,
-			process.env.EMAIL_JS_TEMPLATE_ID,
-			{ otp_code: otp, to_email: email },
-			{
-				publicKey: process.env.EMAIL_JS_PUBLIC_KEY,
-				privateKey: process.env.EMAIL_JS_PRIVATE_KEY,
-			}
-		);
+		// send email via Nodemailer
+		await sendOtpEmail(email, otp, "reset");
 
-		res.json({ message: "OTP sent to email." });
+		res.json({ success: true, message: "OTP sent to your email." });
 	} catch (error) {
 		console.error("OTP error:", error);
-		res.status(500).json({ message: "Internal server error." });
+		res.status(500).json({ success: false, message: "Failed to send OTP. Please try again." });
 	}
 };
 
-// VERIFY OTP
-exports.verifyOtp = (req, res) => {
+// VERIFY OTP (Forgot Password)
+exports.verifyOtp = async (req, res) => {
 	try {
 		const { email, otp } = req.body;
 		if (!email || !otp)
-			return res
-				.status(400)
-				.json({ message: "Email and OTP required." });
+			return res.status(400).json({ success: false, message: "Email and OTP required." });
 
-		const record = otpStore[email];
-		if (!record)
-			return res
-				.status(400)
-				.json({ message: "No OTP requested for this email." });
+		const user = await User.findOne({ email });
+		if (!user || !user.currentOtp)
+			return res.status(400).json({ success: false, message: "No OTP request found." });
 
-		if (Date.now() > record.expiresAt) {
-			delete otpStore[email];
-			return res.status(400).json({ message: "OTP expired." });
+		if (new Date() > user.currentOtp.expiresAt) {
+			return res.status(400).json({ success: false, message: "OTP expired." });
 		}
 
-		if (record.code !== otp)
-			return res.status(400).json({ message: "Invalid OTP." });
+		if (user.currentOtp.code !== otp)
+			return res.status(400).json({ success: false, message: "Invalid OTP code." });
 
 		// OTP verified — issue short-lived reset token
 		const resetToken = jwt.sign({ email }, JWT_SECRET, {
 			expiresIn: "15m",
 		});
 
-		res.json({ message: "OTP verified.", resetToken });
+		// Clear OTP
+		user.currentOtp = undefined;
+		await user.save();
+
+		res.json({ success: true, message: "OTP verified.", resetToken });
 	} catch (error) {
 		console.error("Verify OTP error:", error);
-		res.status(500).json({ message: "Internal server error." });
+		res.status(500).json({ success: false, message: "Internal server error." });
 	}
 };
 

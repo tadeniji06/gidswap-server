@@ -42,6 +42,13 @@ const userSchema = new mongoose.Schema({
 		failureReason: String,
 	},
 
+	// Email Verification & OTP
+	isVerified: { type: Boolean, default: false },
+	currentOtp: {
+		code: { type: String },
+		expiresAt: { type: Date },
+	},
+
 	createdAt: { type: Date, default: Date.now },
 });
 
