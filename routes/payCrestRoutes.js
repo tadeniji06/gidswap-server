@@ -57,12 +57,14 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 			orderId: orderData.id, // Paycrest order ID
 			user: req.user._id,
 			status: "pending",
+			direction: "offramp",
 			amount: payload.amount || orderData.amount,
-			currency: payload.token || orderData.token,
-			network: req.body.network,
-			receiveAddress: orderData.receiveAddress,
+			currency: payload.currency || payload.token || orderData.currency || orderData.token,
+			// In v2, network and destination address are in providerAccount
+			network: orderData.providerAccount?.network || payload.network || req.body.network,
+			receiveAddress: orderData.providerAccount?.receiveAddress || orderData.receiveAddress,
 			reference: req.body.reference,
-			validUntil: orderData.validUntil,
+			validUntil: orderData.providerAccount?.validUntil || orderData.validUntil,
 			paycrestData: orderData, // Store full Paycrest response
 		});
 

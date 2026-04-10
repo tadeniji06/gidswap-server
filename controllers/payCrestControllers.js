@@ -14,9 +14,36 @@ module.exports = {
 	initOrder: async (payload) => {
 		try {
 			const baseUrl = BASE_URL.replace("/v1", "/v2");
+			
+			// --- AUTO-MIGRATE V1 TO V2 SCHEMA ---
+			// If we see legacy top-level 'token' or 'network', it's a v1 payload.
+			// We wrap it in the v2 source/destination shape for PayCrest v2.
+			let v2Payload = payload;
+			if (payload.token || (payload.recipient && !payload.destination)) {
+				console.log("🔄 Migrating V1 payload to V2...");
+				v2Payload = {
+					amount: payload.amount?.toString(),
+					amountIn: payload.amountIn || "crypto",
+					rate: payload.rate?.toString(),
+					reference: payload.reference,
+					senderFeePercent: payload.senderFeePercent,
+					source: {
+						type: "crypto",
+						currency: payload.token,
+						network: payload.network,
+						refundAddress: payload.returnAddress
+					},
+					destination: {
+						type: "fiat",
+						currency: payload.recipient?.currency || "NGN",
+						recipient: payload.recipient
+					}
+				};
+			}
+
 			const res = await axios.post(
 				`${baseUrl}/sender/orders`,
-				payload,
+				v2Payload,
 				{ headers: defaultHeaders }
 			);
 			return res.data;
@@ -67,10 +94,12 @@ module.exports = {
 	getTokenRate: async ({ network, token, amount, fiat, side }) => {
 		try {
 			const baseUrl = BASE_URL.replace("/v1", "/v2");
-			// Using the passed amount to get a volume-matched rate
-			let endpoint = network
-				? `${baseUrl}/rates/${network}/${token}/${amount}/${fiat}`
-				: `${baseUrl}/rates/${token}/${amount}/${fiat}`;
+			
+			// V2 REQUIRES a network segment. If missing, we try to guess it.
+			// Defaulting to 'bnb-smart-chain' as a safe common denominator if absolutely missing.
+			const safeNetwork = network || "bnb-smart-chain";
+			
+			let endpoint = `${baseUrl}/rates/${safeNetwork}/${token}/${amount}/${fiat}`;
 			
 			if (side) {
 				endpoint += `?side=${side}`;
