@@ -64,21 +64,21 @@ module.exports = {
 		}
 	},
 
-	getTokenRate: async ({ network, token, fiat, side }) => {
+	getTokenRate: async ({ network, token, amount, fiat, side }) => {
 		try {
 			const baseUrl = BASE_URL.replace("/v1", "/v2");
-			// Using 1 as amount to get the unit rate (NGN per 1 Crypto)
-			// This avoids hitting liquidity caps for large test quotes
+			// Using the passed amount to get a volume-matched rate
 			let endpoint = network
-				? `${baseUrl}/rates/${network}/${token}/1/${fiat}`
-				: `${baseUrl}/rates/${token}/1/${fiat}`;
+				? `${baseUrl}/rates/${network}/${token}/${amount}/${fiat}`
+				: `${baseUrl}/rates/${token}/${amount}/${fiat}`;
 			
 			if (side) {
 				endpoint += `?side=${side}`;
 			}
 
-			// Public endpoint - no API key required according to docs
-			const res = await axios.get(endpoint);
+			const res = await axios.get(endpoint, {
+				headers: defaultHeaders,
+			});
 			return res.data;
 		} catch (error) {
 			console.error(

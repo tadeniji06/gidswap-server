@@ -447,9 +447,9 @@ router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
  */
 router.get("/tokenRates/:network/:token/:amount/:fiat", async (req, res) => {
 	try {
-		const { network, token, fiat } = req.params;
+		const { network, token, amount, fiat } = req.params;
 		const side = req.query.side || "buy";
-		const result = await getTokenRate({ network, token, fiat, side });
+		const result = await getTokenRate({ network, token, amount, fiat, side });
 		res.json(result);
 	} catch (error) {
 		console.error("❌ Get rate error:", error.response?.data || error.message);
