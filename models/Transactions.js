@@ -28,6 +28,11 @@ const transactionSchema = new mongoose.Schema({
 		],
 		default: "pending",
 	},
+	direction: {
+		type: String,
+		enum: ["offramp", "onramp"],
+		default: "offramp",
+	},
 
 	// Transaction details
 	amount: { type: Number },

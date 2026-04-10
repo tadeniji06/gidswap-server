@@ -14,8 +14,8 @@ const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
 const router = express.Router();
 
 const PAYCREST_BASE =
-	process.env.PAY_CREST_API?.replace(/\/+$/, "") ||
-	"https://api.paycrest.io/v1";
+	process.env.PAY_CREST_API?.replace(/\/+$/, "").replace("/v1", "/v2") ||
+	"https://api.paycrest.io/v2";
 
 /**
  * Init Paycrest order + save transaction immediately
@@ -78,6 +78,77 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 	} catch (error) {
 		console.error(
 			"❌ Init order error:",
+			error.response?.data || error.message || error,
+		);
+		return res.status(500).json({
+			success: false,
+			error: "Internal Server Error",
+			details: error.response?.data || error.message,
+		});
+	}
+});
+
+/**
+ * Init Paycrest onramp order (fiat -> crypto)
+ * POST /api/payCrest/trade/init-onramp
+ */
+router.post("/init-onramp", authMiddleware, async (req, res) => {
+	try {
+		console.log("🚀 Initializing ONRAMP order for user:", req.user._id);
+		console.log(
+			"📩 Payload received:",
+			JSON.stringify(req.body, null, 2),
+		);
+
+		// The payload for onramp expects source.type = "fiat" and destination.type = "crypto"
+		// We'll just pass it down to `initOrder` since Paycrest uses the same `/v2/sender/orders` endpoint
+		const payload = req.body;
+
+		// Call Paycrest API via controller
+		const result = await initOrder(payload);
+		const orderData = result?.data;
+
+		console.log("📦 Paycrest onramp response:", orderData);
+
+		if (!orderData?.id) {
+			console.error("❌ Invalid Paycrest response:", result);
+			return res.status(400).json({
+				success: false,
+				message: "Invalid response from Paycrest",
+				result,
+			});
+		}
+
+		// Save transaction to database
+		const txn = new Transaction({
+			orderId: orderData.id, 
+			user: req.user._id,
+			status: "pending",
+			direction: "onramp",
+			// Prefer the calculated crypto amount from Paycrest
+			amount: orderData.amount || payload.amount, 
+			currency: payload.destination?.currency || orderData.destination?.currency, 
+			fiatAmount: payload.amount, // Optional: tracking the original fiat paid
+			fiatCurrency: payload.source?.currency || "NGN",
+			network: payload.destination?.recipient?.network || orderData.destination?.recipient?.network,
+			receiveAddress: null, // No receive address for onramp (user gets fiat instructions)
+			reference: req.body.reference,
+			validUntil: orderData.providerAccount?.validUntil || orderData.validUntil,
+			paycrestData: orderData, // Store full Paycrest response (contains providerAccount fiat transfer instructions)
+		});
+
+		await txn.save();
+		console.log("✅ Onramp transaction saved:", txn._id);
+
+		return res.status(201).json({
+			success: true,
+			message: "Onramp order initiated successfully",
+			transaction: txn,
+			paycrestResponse: result,
+		});
+	} catch (error) {
+		console.error(
+			"❌ Init onramp order error:",
 			error.response?.data || error.message || error,
 		);
 		return res.status(500).json({
@@ -165,9 +236,11 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			id: txn.orderId,
 			reference: txn.reference || txn.orderId,
 			amount: txn.amount?.toString() || "0",
+			fiatAmount: txn.paycrestData?.providerAccount?.amountToTransfer || txn.amount, // Helpful for UI to have both
 			token: txn.currency || "",
 			network: txn.network || "",
 			receiveAddress: txn.receiveAddress || "",
+			providerAccount: txn.paycrestData?.providerAccount, // Expose for Onramp transfer instructions
 			senderFee: "0",
 			transactionFee: "0",
 			validUntil: txn.validUntil || "",
@@ -287,6 +360,7 @@ router.get(
 					token: txn.currency || "",
 					network: txn.network || "",
 					receiveAddress: txn.receiveAddress || "",
+					providerAccount: txn.paycrestData?.providerAccount,
 					status: txn.status,
 					updatedAt: txn.updatedAt,
 				},
@@ -350,17 +424,38 @@ router.get("/supportedBanks/:currency_code", async (req, res) => {
 });
 
 /**
- * Get token rate
+ * Get token rate (legacy without network)
  * GET /api/payCrest/trade/tokenRates/:token/:amount/:fiat
  */
 router.get("/tokenRates/:token/:amount/:fiat", async (req, res) => {
 	try {
 		const { token, amount, fiat } = req.params;
-		const result = await getTokenRate({ token, amount, fiat });
+		const side = req.query.side || "buy";
+		const result = await getTokenRate({ token, amount, fiat, side });
 		res.json(result);
 	} catch (error) {
-		console.error("❌ Get rate error:", error);
-		res.status(500).json({ error: "Server Error" });
+		console.error("❌ Get rate error:", error.response?.data || error.message);
+		const status = error.response?.status || 500;
+		const data = error.response?.data || { error: "Server Error" };
+		res.status(status).json(data);
+	}
+});
+
+/**
+ * Get token rate (v2 with network)
+ * GET /api/payCrest/trade/tokenRates/:network/:token/:amount/:fiat
+ */
+router.get("/tokenRates/:network/:token/:amount/:fiat", async (req, res) => {
+	try {
+		const { network, token, fiat } = req.params;
+		const side = req.query.side || "buy";
+		const result = await getTokenRate({ network, token, fiat, side });
+		res.json(result);
+	} catch (error) {
+		console.error("❌ Get rate error:", error.response?.data || error.message);
+		const status = error.response?.status || 500;
+		const data = error.response?.data || { error: "Server Error" };
+		res.status(status).json(data);
 	}
 });
 
@@ -373,8 +468,64 @@ router.post("/verifyAccount", async (req, res) => {
 		const result = await verifyAccount(req.body);
 		res.json(result);
 	} catch (error) {
-		console.error("❌ Verify account error:", error);
-		res.status(500).json({ error: error.message || "Server Error" });
+		console.error("❌ Verify account error:", error.response?.data || error.message);
+		const status = error.response?.status || 500;
+		const data = error.response?.data || { error: "Server Error" };
+		res.status(status).json(data);
+	}
+});
+
+const crypto = require("crypto");
+
+/**
+ * Handle Paycrest webhooks
+ * POST /api/payCrest/trade/webhook
+ */
+router.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+	const signature = req.headers["x-paycrest-signature"];
+	const secret = process.env.PAY_CREST_SECRET;
+
+	if (!signature || !secret) {
+		console.warn("⚠️ Webhook missing signature or secret");
+		return res.status(401).send("Unauthorized");
+	}
+
+	const computed = crypto
+		.createHmac("sha256", secret)
+		.update(req.body)
+		.digest("hex");
+
+	const isValid = crypto.timingSafeEqual(
+		Buffer.from(computed),
+		Buffer.from(signature)
+	);
+
+	if (!isValid) {
+		console.error("❌ Invalid webhook signature");
+		return res.status(401).send("Invalid signature");
+	}
+
+	try {
+		const { event, data } = JSON.parse(req.body.toString());
+		console.log(`🔔 Webhook received: ${event} for order ${data.id}`);
+
+		// Find and update the transaction
+		const txn = await Transaction.findOne({ orderId: data.id });
+		if (txn) {
+			const newStatus = mapPaycrestStatus(data.status);
+			if (newStatus && newStatus !== txn.status) {
+				console.log(`🔄 [Webhook] Update ${data.id}: ${txn.status} → ${newStatus}`);
+				txn.status = newStatus;
+				txn.lastPolledAt = new Date();
+				txn.lastPaycrestResponse = data;
+				await txn.save();
+			}
+		}
+
+		res.sendStatus(200);
+	} catch (error) {
+		console.error("❌ Webhook processing error:", error);
+		res.status(500).send("Error processing webhook");
 	}
 });
 

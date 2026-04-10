@@ -13,8 +13,9 @@ const defaultHeaders = {
 module.exports = {
 	initOrder: async (payload) => {
 		try {
+			const baseUrl = BASE_URL.replace("/v1", "/v2");
 			const res = await axios.post(
-				`${BASE_URL}/sender/orders`,
+				`${baseUrl}/sender/orders`,
 				payload,
 				{ headers: defaultHeaders }
 			);
@@ -47,8 +48,9 @@ module.exports = {
 
 	verifyAccount: async (payload) => {
 		try {
+			const baseUrl = BASE_URL.replace("/v1", "/v2");
 			const res = await axios.post(
-				`${BASE_URL}/verify-account`,
+				`${baseUrl}/verify-account`,
 				payload,
 				{ headers: defaultHeaders }
 			);
@@ -62,12 +64,21 @@ module.exports = {
 		}
 	},
 
-	getTokenRate: async ({ token, amount, fiat }) => {
+	getTokenRate: async ({ network, token, fiat, side }) => {
 		try {
-			const res = await axios.get(
-				`${BASE_URL}/rates/${token}/${amount}/${fiat}`,
-				{ headers: defaultHeaders }
-			);
+			const baseUrl = BASE_URL.replace("/v1", "/v2");
+			// Using 1 as amount to get the unit rate (NGN per 1 Crypto)
+			// This avoids hitting liquidity caps for large test quotes
+			let endpoint = network
+				? `${baseUrl}/rates/${network}/${token}/1/${fiat}`
+				: `${baseUrl}/rates/${token}/1/${fiat}`;
+			
+			if (side) {
+				endpoint += `?side=${side}`;
+			}
+
+			// Public endpoint - no API key required according to docs
+			const res = await axios.get(endpoint);
 			return res.data;
 		} catch (error) {
 			console.error(
