@@ -9,7 +9,7 @@ const transporter = nodemailer.createTransport({
 	secure: true, // Use SSL for port 465
 	auth: {
 		user: "support@gidswap.com",
-		pass: "gidswap2025!", // If this fails, use an App Password
+		pass: process.env.EMAIL_PASSWORD, 
 	},
 	logger: true,
 	debug: true,
