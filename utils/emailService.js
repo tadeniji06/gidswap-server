@@ -4,9 +4,10 @@ const nodemailer = require("nodemailer");
  * Zoho Mail Transporter
  */
 const transporter = nodemailer.createTransport({
-	host: "smtppro.zoho.com",
-	port: 465,
-	secure: true, // Use SSL for port 465
+	host: "smtp.zoho.com",
+	port: 587,
+	secure: false, // Use STARTTLS for cloud environments like Render
+	requireTLS: true,
 	auth: {
 		user: "support@gidswap.com",
 		pass: process.env.EMAIL_PASSWORD, 
