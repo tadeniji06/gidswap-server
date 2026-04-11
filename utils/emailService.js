@@ -1,25 +1,7 @@
-const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 /**
- * Zoho Mail Transporter
- */
-const transporter = nodemailer.createTransport({
-	host: "smtppro.zoho.com",
-	port: 465,
-	secure: true, // Use SSL (Confirmed to work on Port 465 for this server)
-	auth: {
-		user: "support@gidswap.com",
-		pass: process.env.EMAIL_PASSWORD, 
-	},
-	connectionTimeout: 30000,
-	greetingTimeout: 30000,
-	socketTimeout: 30000,
-	logger: true,
-	debug: true,
-});
-
-/**
- * Send OTP Email
+ * Send OTP Email using Resend HTTP API
  */
 exports.sendOtpEmail = async (email, otp, type = "verification") => {
 	const subject = type === "verification" ? "Verify your GidSwap Account" : "Reset your GidSwap Password";
@@ -42,16 +24,27 @@ exports.sendOtpEmail = async (email, otp, type = "verification") => {
   `;
 
 	try {
-		console.log(`📧 Attempting to send ${type} email to: ${email}`);
-		const info = await transporter.sendMail({
-			from: '"GidSwap Support" <support@gidswap.com>',
-			to: email,
-			subject: subject,
-			html: html,
-		});
-		console.log(`✅ Email sent successfully: ${info.messageId}`);
+		console.log(`📧 Attempting to send ${type} email via Resend API to: ${email}`);
+		
+		const response = await axios.post(
+			"https://api.resend.com/emails",
+			{
+				from: "GidSwap Support <support@gidswap.com>",
+				to: email,
+				subject: subject,
+				html: html,
+			},
+			{
+				headers: {
+					"Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+					"Content-Type": "application/json",
+				},
+			}
+		);
+		
+		console.log(`✅ Email sent successfully via Resend: ID ${response.data.id}`);
 	} catch (error) {
-		console.error("❌ Nodemailer Error:", error);
+		console.error("❌ Resend API Error:", error.response?.data || error.message);
 		throw error;
 	}
 };
