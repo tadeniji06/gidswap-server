@@ -26,7 +26,7 @@ module.exports = {
 					amountIn: payload.amountIn || "crypto",
 					rate: payload.rate?.toString(),
 					reference: payload.reference,
-					senderFeePercent: "1.0",
+					senderFeePercent: "0.01",
 					source: {
 						type: "crypto",
 						currency: payload.token,

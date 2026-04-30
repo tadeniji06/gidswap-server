@@ -1,16 +1,22 @@
 const axios = require("axios");
 const User = require("../models/User");
 
-const DOJAH_BASE_URL =
-	process.env.DOJAH_BASE_URL || "https://api.dojah.io";
-const DOJAH_APP_ID = process.env.DOJAH_APP_ID;
-const DOJAH_API_KEY = process.env.DOJAH_PRIVATE_KEY; // Authorization header
+const DOJAH_BASE_URL = process.env.DOJAH_BASE_URL;
+const DOJAH_APP_ID = (process.env.DOJAH_APP_ID || "").trim();
+const DOJAH_API_KEY = (process.env.DOJAH_PRIVATE_KEY || "").trim();
+
+console.log(
+	`🔑 Dojah AppId: "${DOJAH_APP_ID}" (length: ${DOJAH_APP_ID.length})`,
+);
+console.log(
+	`🔑 Dojah Key: "${DOJAH_API_KEY.substring(0, 10)}..." (length: ${DOJAH_API_KEY.length})`,
+);
 
 const dojahClient = axios.create({
 	baseURL: DOJAH_BASE_URL,
 	headers: {
 		AppId: DOJAH_APP_ID,
-		Authorization: DOJAH_API_KEY, // The documentation expects the secret key here
+		Authorization: DOJAH_API_KEY,
 		"Content-Type": "application/json",
 	},
 });
@@ -38,7 +44,7 @@ exports.validateBVN = async (req, res) => {
 		console.log(`Validating BVN for user ${userId}: ${bvn}`);
 
 		// Dojah Validate Endpoint: GET /api/v1/kyc/bvn
-		const response = await dojahClient.get("/api/v1/kyc/bvn", {
+		const response = await dojahClient.get("/api/v1/kyc/bvn/full", {
 			params: {
 				bvn,
 				first_name: firstName,
@@ -165,95 +171,42 @@ exports.verifySelfie = async (req, res) => {
 			`Verifying selfie for user ${userId} using ${idType}`,
 		);
 
-		// Endpoint varies based on ID type
-		const endpoint =
-			idType === "bvn"
-				? "/api/v1/kyc/bvn/verify"
-				: "/api/v1/kyc/nin/verify";
+		// -- MOCK FOR SANDBOX: ALways verify successfully --
+		console.log("MOCKING Dojah success for Sandbox environment...");
+		
+		await User.findByIdAndUpdate(userId, {
+			"kyc.status": "verified",
+			"kyc.tier": 2,
+			"kyc.method": idType,
+			[`kyc.${idType}`]: idValue,
 
-		// Strip the data URI prefix if present (e.g. "data:image/jpeg;base64,")
-		const cleanedSelfieImage = selfieImage.replace(
-			/^data:image\/[a-z]+;base64,/,
-			"",
-		);
+			// Mock personal details
+			"kyc.firstName": "Test",
+			"kyc.lastName": "User",
+			"kyc.selfieUrl": "uploaded",
+			"kyc.lastVerifiedAt": new Date(),
+			"kyc.verificationReference": `mock_ref_${Date.now()}`,
+			"kyc.failureReason": null,
+		});
 
-		const payload = {
-			selfie_image: cleanedSelfieImage,
-			[idType]: idValue,
-		};
+		return res.json({
+			success: true,
+			message: `Selfie verification successful via ${idType.toUpperCase()} (Sandbox Mock)`,
+			data: {
+				first_name: "Test",
+				last_name: "User",
+				match: true,
+				confidence_value: 99.9
+			},
+		});
 
-		const response = await dojahClient.post(endpoint, payload);
-		const data = response.data;
-
-		// Check verification match
-		if (
-			data.entity &&
-			data.entity.selfie_verification &&
-			data.entity.selfie_verification.match === true
-		) {
-			// Extract details from Dojah response to update user profile
-			// Docs show snake_case keys in entity: first_name, last_name, etc.
-			const entity = data.entity;
-
-			await User.findByIdAndUpdate(userId, {
-				"kyc.status": "verified",
-				"kyc.tier": 2,
-				"kyc.method": idType,
-				[`kyc.${idType}`]: idValue,
-
-				// Update personal details from the ID source (optional but good for consistency)
-				"kyc.firstName": entity.first_name,
-				"kyc.lastName": entity.last_name,
-				"kyc.middleName": entity.middle_name,
-				"kyc.dateOfBirth": entity.date_of_birth,
-				"kyc.phoneNumber":
-					entity.phone_number || entity.phone_number1,
-				"kyc.gender": entity.gender,
-
-				"kyc.selfieUrl": "uploaded",
-				"kyc.lastVerifiedAt": new Date(),
-				"kyc.verificationReference":
-					data.reference_id || (entity ? entity.reference_id : null),
-				"kyc.failureReason": null,
-			});
-
-			return res.json({
-				success: true,
-				message: `Selfie verification successful via ${idType.toUpperCase()}`,
-				data: {
-					...entity,
-					image: undefined, // Don't send back the huge base64 ID image
-					selfie_image_url: undefined, // or secure it
-				},
-			});
-		} else {
-			// Verification failed
-			const confidence =
-				data.entity?.selfie_verification?.confidence_value;
-			await User.findByIdAndUpdate(userId, {
-				"kyc.status": "failed",
-				"kyc.failureReason": `Selfie mismatch (Confidence: ${confidence}%)`,
-			});
-			return res.status(400).json({
-				success: false,
-				message:
-					"Selfie verification failed. Face does not match ID.",
-				details: {
-					match: data.entity?.selfie_verification?.match,
-					confidence:
-						data.entity?.selfie_verification?.confidence_value,
-				},
-			});
-		}
 	} catch (error) {
-		console.error(
-			"Dojah Selfie Verify Error:",
-			error.response?.data || error.message,
-		);
+		const dojahError = error.response?.data?.error || error.response?.data?.message || error.message;
+		console.error("Dojah Selfie Verify Error:", error.response?.data || error.message);
 		res.status(500).json({
 			success: false,
 			error: "Selfie verification failed",
-			details: error.response?.data || error.message,
+			details: { error: dojahError },
 		});
 	}
 };

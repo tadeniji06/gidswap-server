@@ -243,7 +243,7 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			network: txn.network || "",
 			receiveAddress: txn.receiveAddress || "",
 			providerAccount: txn.paycrestData?.providerAccount, // Expose for Onramp transfer instructions
-			senderFee: "1.0",
+			senderFee: "0.01",
 			transactionFee: "0",
 			validUntil: txn.validUntil || "",
 			status: txn.status,
