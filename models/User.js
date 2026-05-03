@@ -49,6 +49,9 @@ const userSchema = new mongoose.Schema({
 		expiresAt: { type: Date },
 	},
 
+	// Onboarding
+	onboardingCompleted: { type: Boolean, default: false },
+
 	createdAt: { type: Date, default: Date.now },
 });
 

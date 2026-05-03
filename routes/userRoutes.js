@@ -9,6 +9,9 @@ router.use(authMiddleware);
 // GET user profile (always returns authenticated user's details)
 router.get("/profile", userControllers.getUserProfile);
 
+// POST complete onboarding
+router.post("/onboarding", userControllers.completeOnboarding);
+
 // UPDATE user profile (full name only)
 router.put("/profile", userControllers.updateProfile);
 

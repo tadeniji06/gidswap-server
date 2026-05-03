@@ -23,11 +23,68 @@ exports.getUserProfile = async (req, res) => {
 				lastLoginAt: user.lastLoginAt,
 				createdAt: user.createdAt,
 				rewardPoints: user.rewardPoints || 0,
+				onboardingCompleted: user.onboardingCompleted || false,
 			},
 		});
 	} catch (error) {
 		console.error("Get user profile error:", error);
 		res.status(500).json({ message: "Internal server error." });
+	}
+};
+
+// COMPLETE ONBOARDING
+exports.completeOnboarding = async (req, res) => {
+	try {
+		const {
+			bankName,
+			bankCode,
+			accountNumber,
+			accountName,
+			returnAddress, // Crypto wallet address
+		} = req.body;
+		const userId = req.user._id;
+
+		// 1. Mark onboarding as completed
+		await User.findByIdAndUpdate(userId, { onboardingCompleted: true });
+
+		// 2. If banking details are provided, save as default SavedAccount
+		if (bankName && bankCode && accountNumber && accountName) {
+			const SavedAccount = require("../models/SavedAccount");
+			
+			// Check if account already exists
+			const existing = await SavedAccount.findOne({
+				user: userId,
+				accountNumber,
+				bankCode
+			});
+
+			if (!existing) {
+				await SavedAccount.create({
+					user: userId,
+					label: "Default Account",
+					bankName,
+					bankCode,
+					accountNumber,
+					accountName,
+					returnAddress: returnAddress || null,
+					isDefault: true,
+				});
+			} else if (returnAddress && !existing.returnAddress) {
+				// update existing account with return address if not already set
+				existing.returnAddress = returnAddress;
+				existing.isDefault = true;
+				await existing.save();
+			}
+		}
+
+		res.status(200).json({
+			success: true,
+			message: "Onboarding completed successfully"
+		});
+
+	} catch (error) {
+		console.error("Complete onboarding error:", error);
+		res.status(500).json({ success: false, message: "Internal server error." });
 	}
 };
 

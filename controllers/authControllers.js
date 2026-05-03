@@ -124,6 +124,7 @@ exports.verifyEmail = async (req, res) => {
 				id: user._id,
 				fullName: user.fullName,
 				email: user.email,
+				onboardingCompleted: user.onboardingCompleted || false,
 			}
 		});
 	} catch (error) {
@@ -238,6 +239,7 @@ exports.login = async (req, res) => {
 				id: user._id,
 				fullName: user.fullName,
 				email: user.email,
+				onboardingCompleted: user.onboardingCompleted || false,
 			},
 		});
 	} catch (error) {
