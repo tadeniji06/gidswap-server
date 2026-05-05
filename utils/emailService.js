@@ -42,9 +42,9 @@ exports.sendOtpEmail = async (email, otp, type = "verification") => {
 			}
 		);
 		
-		console.log(`✅ Email sent successfully via Resend: ID ${response.data.id}`);
+		console.log(`Email sent successfully via Resend: ID ${response.data.id}`);
 	} catch (error) {
-		console.error("❌ Resend API Error:", error.response?.data || error.message);
+		console.error("Resend API Error:", error.response?.data || error.message);
 		throw error;
 	}
 };

@@ -55,7 +55,7 @@ const userRoutes = require("./routes/userRoutes");
 const webhookRouter = require("./routes/payCrestWebhook");
 const transactionRoutes = require("./routes/transactionRoutes");
 const rewardsRoutes = require("./routes/rewardsRoutes");
-const onrampRoutes = require("./routes/onrampRoutes");
+// const onrampRoutes = require("./routes/onrampRoutes");
 const savedAccountRoutes = require("./routes/savedAccountRoutes");
 const { startOnrampPoller } = require("./services/onrampPoller");
 const kycRoutes = require("./routes/kycRoutes");
@@ -67,7 +67,7 @@ app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
 app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/rewards", rewardsRoutes);
-app.use("/api/onramp", onrampRoutes);
+// app.use("/api/onramp", onrampRoutes);
 app.use("/api/saved-accounts", savedAccountRoutes);
 
 // Start the background onramp poller

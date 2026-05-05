@@ -20,13 +20,13 @@ module.exports = {
 			// We wrap it in the v2 source/destination shape for PayCrest v2.
 			let v2Payload = payload;
 			if (payload.token || (payload.recipient && !payload.destination)) {
-				console.log("🔄 Migrating V1 payload to V2...");
+				console.log("Migrating V1 payload to V2...");
 				v2Payload = {
 					amount: payload.amount?.toString(),
 					amountIn: payload.amountIn || "crypto",
 					rate: payload.rate?.toString(),
 					reference: payload.reference,
-					senderFeePercent: "0.01",
+					senderFeePercent: "0.5",
 					source: {
 						type: "crypto",
 						currency: payload.token,
