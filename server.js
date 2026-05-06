@@ -6,7 +6,7 @@ const PORT = process.env.PORT;
 const server = http.createServer(app);
 
 connectDB().then(() => {
-	server.listen(PORT, () =>
-		console.log(`Server up on http://localhost${PORT} `)
+	server.listen(PORT, "0.0.0.0", () =>
+		console.log(`🚀 Server up on http://0.0.0.0:${PORT}`)
 	);
 });
