@@ -2,7 +2,7 @@ const express = require("express");
 const {
 	createOrder,
 	getRate,
-	checkStatus,
+	// checkStatus,
 	getCurrencies,
 } = require("../controllers/fixedFloatController");
 const router = express.Router();
@@ -12,13 +12,16 @@ router.post("/create-order", async (req, res) => {
 		const result = await createOrder(req.body);
 		res.json(result);
 	} catch (err) {
+		const validationError = err.message?.includes(
+			"FixedFloat create order requires affiliate fields",
+		);
 		console.error(
 			"Create Order Error:",
-			err?.response?.data || err.message
+			err?.response?.data || err.message,
 		);
-		res.status(500).json({
-			error: "Failed to create order",
-			details: err.response?.data,
+		res.status(validationError ? 400 : 500).json({
+			error: validationError ? err.message : "Failed to create order",
+			details: err.response?.data || null,
 		});
 	}
 });
@@ -60,7 +63,7 @@ router.get("/currencies", async (req, res) => {
 	} catch (err) {
 		console.error(
 			"Currency List Error:",
-			err?.response?.data || err.message
+			err?.response?.data || err.message,
 		);
 		res.status(500).json({
 			error: "Failed to get currencies",
