@@ -76,6 +76,65 @@ const awardPointsForTransaction = async (
 	}
 };
 
+const awardAffiliateCommission = async (
+	userId,
+	transactionId,
+	amountInUSD,
+) => {
+	try {
+		// Find user and see if they were referred by anyone
+		const user = await User.findById(userId);
+		if (!user || !user.referredBy) {
+			return { success: true, message: "No referrer found, skipping commission." };
+		}
+
+		// Check if commission already awarded for this transaction
+		const existingReward = await Reward.findOne({
+			user: user.referredBy,
+			transaction: transactionId,
+			type: "affiliate_commission",
+		});
+
+		if (existingReward) {
+			return { success: false, message: "Commission already awarded for this transaction" };
+		}
+
+		// Calculate 10% commission on the amount in USD
+		const commission = amountInUSD * 0.1;
+
+		if (commission <= 0) {
+			return { success: false, message: "Transaction amount too small to award commission" };
+		}
+
+		// Create reward record for the referrer
+		await Reward.create({
+			user: user.referredBy,
+			type: "affiliate_commission",
+			points: commission, // We store the $ amount here, or we can use another field if points is integer only. Wait, points in Schema is Number. Let's use points.
+			transaction: transactionId,
+			description: `Earned $${commission.toFixed(2)} affiliate commission from a referred user's $${amountInUSD.toFixed(2)} swap`,
+		});
+
+		// Update referrer's totals
+		await User.findByIdAndUpdate(user.referredBy, {
+			$inc: { 
+				totalReferralVolume: amountInUSD,
+				referralRewardsBalance: commission 
+			},
+		});
+
+		console.log(
+			`✅ Awarded $${commission.toFixed(2)} affiliate commission to user ${user.referredBy} for transaction ${transactionId}`
+		);
+
+		return { success: true, message: "Commission awarded successfully", commission };
+	} catch (error) {
+		console.error("Error awarding affiliate commission:", error);
+		return { success: false, message: "Failed to award commission", error: error.message };
+	}
+};
+
 module.exports = {
 	awardPointsForTransaction,
+	awardAffiliateCommission,
 };

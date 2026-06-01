@@ -7,6 +7,7 @@ const {
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
 const {
 	awardPointsForTransaction,
+	awardAffiliateCommission,
 } = require("../utils/rewardsHelper");
 
 const router = express.Router();
@@ -178,6 +179,23 @@ router.post("/paycrest", async (req, res) => {
 					);
 				} else {
 					console.log(`ℹ️ ${rewardResult.message}`);
+				}
+
+				// Award Affiliate Commission
+				console.log(
+					`🤝 Attempting to award affiliate commission for transaction ${txn._id}`,
+				);
+				const affiliateResult = await awardAffiliateCommission(
+					txn.user,
+					txn._id,
+					txn.amount,
+				);
+				if (affiliateResult.success) {
+					console.log(
+						`✅ ${affiliateResult.message}: $${affiliateResult.commission}`,
+					);
+				} else {
+					console.log(`ℹ️ ${affiliateResult.message}`);
 				}
 			}
 

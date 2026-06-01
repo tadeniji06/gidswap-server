@@ -2,7 +2,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { sendOtpEmail } = require("../utils/emailService");
-const crypto = require("crypto");
+const { generateUniqueReferralCode } = require("../utils/referralCode");
 const {
 	getClientIP,
 	getUserAgent,
@@ -14,7 +14,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // SIGNUP Controller
 exports.signUp = async (req, res) => {
 	try {
-		const { fullName, email, password } = req.body;
+		const { fullName, email, password, referralCode } = req.body;
 
 		if (!fullName || !email || !password) {
 			return res
@@ -41,6 +41,18 @@ exports.signUp = async (req, res) => {
 		const otp = Math.floor(100000 + Math.random() * 900000).toString();
 		const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
 
+		// Handle Referral Code
+		let referredById = null;
+		if (referralCode) {
+			const referringUser = await User.findOne({ referralCode });
+			if (referringUser) {
+				referredById = referringUser._id;
+			}
+		}
+
+		// Generate unique referral code for this user
+		const newReferralCode = await generateUniqueReferralCode();
+
 		// Create user
 		const user = new User({
 			fullName,
@@ -56,6 +68,8 @@ exports.signUp = async (req, res) => {
 				code: otp,
 				expiresAt: otpExpires,
 			},
+			referralCode: newReferralCode,
+			referredBy: referredById,
 		});
 
 		await user.save();

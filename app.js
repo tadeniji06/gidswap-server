@@ -60,6 +60,7 @@ const rewardsRoutes = require("./routes/rewardsRoutes");
 const savedAccountRoutes = require("./routes/savedAccountRoutes");
 const { startOnrampPoller } = require("./services/onrampPoller");
 const kycRoutes = require("./routes/kycRoutes");
+const affiliateRoutes = require("./routes/affiliateRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
@@ -70,6 +71,7 @@ app.use("/api/webhooks", webhookRouter);
 app.use("/api/rewards", rewardsRoutes);
 // app.use("/api/onramp", onrampRoutes);
 app.use("/api/saved-accounts", savedAccountRoutes);
+app.use("/api/affiliate", affiliateRoutes);
 
 // Start the background onramp poller
 startOnrampPoller();

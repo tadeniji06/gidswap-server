@@ -9,7 +9,7 @@ const rewardSchema = new mongoose.Schema({
 	},
 	type: {
 		type: String,
-		enum: ["earned", "withdrawn"],
+		enum: ["earned", "withdrawn", "affiliate_commission"],
 		required: true,
 	},
 	points: {

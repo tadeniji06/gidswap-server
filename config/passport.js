@@ -2,6 +2,7 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/User");
 const bcrypt = require("bcrypt");
+const { generateUniqueReferralCode } = require("../utils/referralCode");
 
 passport.use(
 	new GoogleStrategy(
@@ -18,6 +19,8 @@ passport.use(
 				});
 				if (existingUser) return done(null, existingUser);
 
+				const newReferralCode = await generateUniqueReferralCode();
+
 				const newUser = new User({
 					fullName: profile.displayName,
 					email: profile.emails[0].value,
@@ -25,6 +28,7 @@ passport.use(
 					googleId: profile.id,
 					isGoogleAuth: true,
 					lastLoginAt: new Date(),
+					referralCode: newReferralCode,
 				});
 
 				await newUser.save();

@@ -52,6 +52,12 @@ const userSchema = new mongoose.Schema({
 	// Onboarding
 	onboardingCompleted: { type: Boolean, default: false },
 
+	// Affiliate System
+	referralCode: { type: String, unique: true, sparse: true },
+	referredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+	totalReferralVolume: { type: Number, default: 0 },
+	referralRewardsBalance: { type: Number, default: 0 },
+
 	createdAt: { type: Date, default: Date.now },
 });
 
