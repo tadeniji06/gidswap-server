@@ -8,6 +8,10 @@ const passport = require("./config/passport");
 
 const app = express();
 
+// Trust the first proxy (Render, Heroku, etc.) so Express correctly reads
+// the real client IP from X-Forwarded-For — required for rate limiting to work
+app.set("trust proxy", 1);
+
 // CORS options
 const corsOptions = {
 	origin: [
@@ -66,7 +70,15 @@ app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/transactions", authMiddlewares, transactionRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);
-app.use("/api/payCrest/trade", authMiddlewares, payCrestRoutes);
+
+// ── PayCrest routes ──────────────────────────────────────────────────────────
+// Public market-data endpoints — no auth required (rates, banks, tokens, verify)
+// These are hit by the frontend before a user is logged in.
+app.use("/api/payCrest/trade", payCrestRoutes);
+// Auth-gated order & status endpoints are protected inside payCrestRoutes.js
+// via per-route authMiddleware (already applied with authMiddleware inline there)
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.use("/api/webhooks", webhookRouter);
 app.use("/api/rewards", rewardsRoutes);
 // app.use("/api/onramp", onrampRoutes);
