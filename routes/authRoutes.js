@@ -3,16 +3,16 @@ const router = express.Router();
 const passport = require("../config/passport");
 const authControllers = require("../controllers/authControllers");
 const { generateJWT } = require("../utils/jwt");
+const { authLimiter } = require("../middlewares/rateLimitMiddleware");
 
 // --- Regular auth routes ---
-router.post("/login", authControllers.login);
-
-router.post("/signup", authControllers.signUp);
+router.post("/login", authLimiter, authControllers.login);
+router.post("/signup", authLimiter, authControllers.signUp);
 
 // Check email
 router.post("/check-email", authControllers.checkEmailExists);
 router.post("/verify-email", authControllers.verifyEmail);
-router.post("/request-otp", authControllers.requestOtp);
+router.post("/request-otp", authLimiter, authControllers.requestOtp);
 router.post("/verify-otp", authControllers.verifyOtp);
 router.post("/reset-password", authControllers.resetPassword);
 
