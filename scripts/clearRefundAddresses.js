@@ -1,11 +1,3 @@
-/**
- * ============================================================
- * SECURITY CLEANUP SCRIPT
- * Clears ALL returnAddress fields in the SavedAccount collection
- * 
- * Run with:  node scripts/clearRefundAddresses.js
- * ============================================================
- */
 
 require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 const mongoose = require("mongoose");
