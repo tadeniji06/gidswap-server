@@ -95,7 +95,13 @@ exports.disableTFA = async (req, res) => {
 exports.checkTFAStatus = async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-        res.json({ isTwoFactorEnabled: user.isTwoFactorEnabled });
+        const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+        const needsReverification = !user.lastTfaVerifyTime || (Date.now() - user.lastTfaVerifyTime.getTime() >= TWO_DAYS_MS);
+        
+        res.json({ 
+            isTwoFactorEnabled: user.isTwoFactorEnabled,
+            needsReverification
+        });
     } catch(err) {
         res.status(500).json({ message: "Internal server error" });
     }

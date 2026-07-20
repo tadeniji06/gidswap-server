@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
 	// 2FA Fields
 	twoFactorSecret: { type: String },
 	isTwoFactorEnabled: { type: Boolean, default: false },
+	lastTfaVerifyTime: { type: Date },
 
 	// Existing fields for tracking user info
 	ipAddress: { type: String },

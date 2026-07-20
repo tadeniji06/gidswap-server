@@ -15,17 +15,27 @@ const User = require("../models/User");
 const { verifySync } = require("otplib");
 
 async function verifyTfa(userId, token) {
-	const user = await User.findById(userId).select("+twoFactorSecret +isTwoFactorEnabled");
+	const user = await User.findById(userId).select("+twoFactorSecret +isTwoFactorEnabled +lastTfaVerifyTime");
 	if (!user) throw new Error("User not found");
 
 	if (!user.isTwoFactorEnabled) {
 		throw new Error("2FA is required but not enabled on your account");
 	}
 
-	if (!token) throw new Error("2FA token is required to place a trade");
+	const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+	const isRecent = user.lastTfaVerifyTime && (Date.now() - user.lastTfaVerifyTime.getTime() < TWO_DAYS_MS);
+
+	if (!token) {
+		if (isRecent) return true; // Bypass if recently verified
+		throw new Error("2FA token is required to place a trade");
+	}
 
 	const isValid = verifySync({ token, secret: user.twoFactorSecret });
 	if (!isValid) throw new Error("Invalid 2FA token");
+	
+	user.lastTfaVerifyTime = new Date();
+	await user.save();
+	
 	return true;
 }
 

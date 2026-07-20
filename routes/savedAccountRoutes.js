@@ -8,16 +8,28 @@ const User = require("../models/User");
 const otplib = require("otplib");
 
 async function verifyTfa(userId, token) {
-	if (!token) throw new Error("2FA token is required to modify refund addresses");
-	const user = await User.findById(userId).select("+twoFactorSecret");
+	const user = await User.findById(userId).select("+twoFactorSecret +isTwoFactorEnabled +lastTfaVerifyTime");
 	if (!user || !user.isTwoFactorEnabled) {
 		throw new Error("2FA is required but not enabled on your account");
 	}
+
+	const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+	const isRecent = user.lastTfaVerifyTime && (Date.now() - user.lastTfaVerifyTime.getTime() < TWO_DAYS_MS);
+
+	if (!token) {
+		if (isRecent) return true;
+		throw new Error("2FA token is required to modify refund addresses");
+	}
+
 	const isValid = otplib.authenticator.verify({
 		token,
 		secret: user.twoFactorSecret,
 	});
 	if (!isValid) throw new Error("Invalid 2FA token");
+
+	user.lastTfaVerifyTime = new Date();
+	await user.save();
+
 	return true;
 }
 
