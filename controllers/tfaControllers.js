@@ -1,5 +1,5 @@
 const User = require("../models/User");
-const otplib = require("otplib");
+const { generateSecret, generateURI, verifySync } = require("otplib");
 const qrcode = require("qrcode");
 
 exports.setupTFA = async (req, res) => {
@@ -10,14 +10,14 @@ exports.setupTFA = async (req, res) => {
 		if (!user) return res.status(404).json({ message: "User not found" });
 
 		// Generate a secret
-		const secret = otplib.authenticator.generateSecret();
+		const secret = generateSecret();
 		
 		// Save the secret temporarily or permanently, but don't enable yet
 		user.twoFactorSecret = secret;
 		user.isTwoFactorEnabled = false;
 		await user.save();
 
-		const otpauth = otplib.authenticator.keyuri(user.email, "Gidswap", secret);
+		const otpauth = generateURI({ label: user.email, issuer: "Gidswap", secret });
 
 		qrcode.toDataURL(otpauth, (err, imageUrl) => {
 			if (err) {
@@ -43,7 +43,7 @@ exports.verifyTFA = async (req, res) => {
 			return res.status(400).json({ message: "2FA setup not initialized" });
 		}
 
-		const isValid = otplib.authenticator.verify({
+		const isValid = verifySync({
 			token,
 			secret: user.twoFactorSecret,
 		});
@@ -73,7 +73,7 @@ exports.disableTFA = async (req, res) => {
 			return res.status(400).json({ message: "2FA is not enabled" });
 		}
 
-		const isValid = otplib.authenticator.verify({
+		const isValid = verifySync({
 			token,
 			secret: user.twoFactorSecret,
 		});
