@@ -12,18 +12,19 @@ const authMiddleware = require("../middlewares/authMiddlewares");
 const axios = require("axios");
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
 const User = require("../models/User");
-const otplib = require("otplib");
+const { verifySync } = require("otplib");
 
 async function verifyTfa(userId, token) {
+	const user = await User.findById(userId).select("+twoFactorSecret +isTwoFactorEnabled");
+	if (!user) throw new Error("User not found");
+
+	// If 2FA is not set up, skip the check
+	if (!user.isTwoFactorEnabled) return true;
+
+	// 2FA is enabled — token is required
 	if (!token) throw new Error("2FA token is required to place a trade");
-	const user = await User.findById(userId).select("+twoFactorSecret");
-	if (!user || !user.isTwoFactorEnabled) {
-		throw new Error("2FA is required but not enabled on your account");
-	}
-	const isValid = otplib.authenticator.verify({
-		token,
-		secret: user.twoFactorSecret,
-	});
+
+	const isValid = verifySync({ token, secret: user.twoFactorSecret });
 	if (!isValid) throw new Error("Invalid 2FA token");
 	return true;
 }
