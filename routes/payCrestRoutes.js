@@ -18,10 +18,10 @@ async function verifyTfa(userId, token) {
 	const user = await User.findById(userId).select("+twoFactorSecret +isTwoFactorEnabled");
 	if (!user) throw new Error("User not found");
 
-	// If 2FA is not set up, skip the check
-	if (!user.isTwoFactorEnabled) return true;
+	if (!user.isTwoFactorEnabled) {
+		throw new Error("2FA is required but not enabled on your account");
+	}
 
-	// 2FA is enabled — token is required
 	if (!token) throw new Error("2FA token is required to place a trade");
 
 	const isValid = verifySync({ token, secret: user.twoFactorSecret });
