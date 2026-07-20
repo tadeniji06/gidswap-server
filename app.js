@@ -57,6 +57,7 @@ const fixedFloatRoutes = require("./routes/fixFloatRoutes");
 const authMiddlewares = require("./middlewares/authMiddlewares");
 const payCrestRoutes = require("./routes/payCrestRoutes");
 const userRoutes = require("./routes/userRoutes");
+const tfaRoutes = require("./routes/tfaRoutes");
 const webhookRouter = require("./routes/payCrestWebhook");
 const transactionRoutes = require("./routes/transactionRoutes");
 const rewardsRoutes = require("./routes/rewardsRoutes");
@@ -67,6 +68,7 @@ const kycRoutes = require("./routes/kycRoutes");
 const affiliateRoutes = require("./routes/affiliateRoutes");
 
 app.use("/api/auth", authRoutes);
+app.use("/api/auth/2fa", tfaRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/transactions", authMiddlewares, transactionRoutes);
 app.use("/api/fixfloat/trade", authMiddlewares, fixedFloatRoutes);

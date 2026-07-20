@@ -4,6 +4,22 @@ const authMiddleware = require("../middlewares/authMiddlewares");
 const { updateLimiter } = require("../middlewares/rateLimitMiddleware");
 
 const router = express.Router();
+const User = require("../models/User");
+const otplib = require("otplib");
+
+async function verifyTfa(userId, token) {
+	if (!token) throw new Error("2FA token is required to modify refund addresses");
+	const user = await User.findById(userId).select("+twoFactorSecret");
+	if (!user || !user.isTwoFactorEnabled) {
+		throw new Error("2FA is required but not enabled on your account");
+	}
+	const isValid = otplib.authenticator.verify({
+		token,
+		secret: user.twoFactorSecret,
+	});
+	if (!isValid) throw new Error("Invalid 2FA token");
+	return true;
+}
 
 /**
  * Validates a crypto wallet address.
@@ -122,6 +138,13 @@ router.post("/", updateLimiter, async (req, res) => {
 			});
 		}
 
+		// 2FA requirement for all users
+		try {
+			await verifyTfa(req.user._id, req.body.tfaToken);
+		} catch (tfaErr) {
+			return res.status(401).json({ success: false, message: tfaErr.message });
+		}
+
 		// If setting this as default, unset any existing default first
 		if (isDefault) {
 			await SavedAccount.updateMany(
@@ -183,6 +206,13 @@ router.patch("/:id", updateLimiter, async (req, res) => {
 			}
 		}
 
+		// 2FA requirement for all users
+		try {
+			await verifyTfa(req.user._id, req.body.tfaToken);
+		} catch (tfaErr) {
+			return res.status(401).json({ success: false, message: tfaErr.message });
+		}
+
 		const allowed = ["label", "returnAddress", "isDefault"];
 		for (const field of allowed) {
 			if (req.body[field] !== undefined) {
@@ -214,6 +244,13 @@ router.patch("/:id", updateLimiter, async (req, res) => {
  */
 router.delete("/:id", async (req, res) => {
 	try {
+		// 2FA requirement for all users
+		try {
+			await verifyTfa(req.user._id, req.body.tfaToken);
+		} catch (tfaErr) {
+			return res.status(401).json({ success: false, message: tfaErr.message });
+		}
+
 		const account = await SavedAccount.findOneAndDelete({
 			_id: req.params.id,
 			user: req.user._id,

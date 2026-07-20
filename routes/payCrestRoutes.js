@@ -11,6 +11,23 @@ const Transaction = require("../models/Transactions");
 const authMiddleware = require("../middlewares/authMiddlewares");
 const axios = require("axios");
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
+const User = require("../models/User");
+const otplib = require("otplib");
+
+async function verifyTfa(userId, token) {
+	if (!token) throw new Error("2FA token is required to place a trade");
+	const user = await User.findById(userId).select("+twoFactorSecret");
+	if (!user || !user.isTwoFactorEnabled) {
+		throw new Error("2FA is required but not enabled on your account");
+	}
+	const isValid = otplib.authenticator.verify({
+		token,
+		secret: user.twoFactorSecret,
+	});
+	if (!isValid) throw new Error("Invalid 2FA token");
+	return true;
+}
+
 const router = express.Router();
 
 const PAYCREST_BASE =
@@ -28,6 +45,13 @@ router.post("/init-order", authMiddleware, async (req, res) => {
 			"📩 Payload received:",
 			JSON.stringify(req.body, null, 2),
 		);
+
+		// 2FA requirement
+		try {
+			await verifyTfa(req.user._id, req.body.tfaToken);
+		} catch (tfaErr) {
+			return res.status(401).json({ success: false, message: tfaErr.message });
+		}
 
 		// Normalize payload: ensure token is uppercase
 		const payload = {
@@ -101,6 +125,13 @@ router.post("/init-onramp", authMiddleware, async (req, res) => {
 			"📩 Payload received:",
 			JSON.stringify(req.body, null, 2),
 		);
+
+		// 2FA requirement
+		try {
+			await verifyTfa(req.user._id, req.body.tfaToken);
+		} catch (tfaErr) {
+			return res.status(401).json({ success: false, message: tfaErr.message });
+		}
 
 		// The payload for onramp expects source.type = "fiat" and destination.type = "crypto"
 		// We'll just pass it down to `initOrder` since Paycrest uses the same `/v2/sender/orders` endpoint

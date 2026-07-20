@@ -39,8 +39,10 @@
 		"morgan": "^1.10.1",
 		"nodemailer": "^8.0.5",
 		"nodemon": "^3.1.10",
+		"otplib": "^13.4.1",
 		"passport": "^0.7.0",
 		"passport-google-oauth20": "^2.0.0",
+		"qrcode": "^1.5.4",
 		"uuid": "^13.0.0"
 	}
 }

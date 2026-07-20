@@ -9,6 +9,10 @@ const userSchema = new mongoose.Schema({
 	googleId: { type: String },
 	isGoogleAuth: { type: Boolean, default: false },
 
+	// 2FA Fields
+	twoFactorSecret: { type: String },
+	isTwoFactorEnabled: { type: Boolean, default: false },
+
 	// Existing fields for tracking user info
 	ipAddress: { type: String },
 	userAgent: { type: String },
