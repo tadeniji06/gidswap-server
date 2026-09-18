@@ -27,6 +27,7 @@ async function run() {
                 name: user.fullName,
                 email: user.email,
                 transactionCount: u.count,
+                rewardPoints: user.rewardPoints || 0,
                 savedAccounts: accounts.map(a => ({
                     bank: a.bankName,
                     accountName: a.accountName,
