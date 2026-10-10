@@ -20,6 +20,8 @@ const corsOptions = {
 		"http://192.168.0.103:3000",
 		"http://192.168.1.204:3000",
 		"https://gidswap.com",
+		"https://cryptopaddy.com",
+		"https://www.cryptopaddy.com",
 		"https://www.gidswap.com",
 	],
 	credentials: true,
