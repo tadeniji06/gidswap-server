@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
 	// Google OAuth fields
 	googleId: { type: String },
 	isGoogleAuth: { type: Boolean, default: false },
+	avatar: { type: String, default: null },
 
 
 	// Existing fields for tracking user info

@@ -15,6 +15,7 @@ exports.getUserProfile = async (req, res) => {
 			user: {
 				id: user._id,
 				fullName: user.fullName,
+				avatar: user.avatar || null,
 				email: user.email,
 				ipAddress: user.ipAddress,
 				userAgent: user.userAgent,
@@ -91,10 +92,10 @@ exports.completeOnboarding = async (req, res) => {
 // UPDATE USER PROFILE (Full Name only)
 exports.updateProfile = async (req, res) => {
 	try {
-		const { fullName } = req.body;
+		const { fullName, avatar } = req.body;
 		const userId = req.user._id;
 
-		if (!fullName || fullName.trim().length === 0) {
+		if ((!fullName || fullName.trim().length === 0) && avatar === undefined) {
 			return res.status(400).json({
 				message: "Full name is required.",
 			});
@@ -103,7 +104,7 @@ exports.updateProfile = async (req, res) => {
 		// Update user profile
 		const updatedUser = await User.findByIdAndUpdate(
 			userId,
-			{ fullName: fullName.trim() },
+			{ ...(fullName ? { fullName: fullName.trim() } : {}), ...(avatar !== undefined ? { avatar } : {}) },
 			{ new: true, runValidators: true },
 		);
 
@@ -116,6 +117,7 @@ exports.updateProfile = async (req, res) => {
 			user: {
 				id: updatedUser._id,
 				fullName: updatedUser.fullName,
+				avatar: updatedUser.avatar || null,
 				email: updatedUser.email,
 			},
 		});
