@@ -13,6 +13,7 @@ const axios = require("axios");
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
 const User = require("../models/User");
 const isAdultDateOfBirth = require("../utils/validateAdultDateOfBirth");
+const { getPaycrestReason } = require("../utils/getPaycrestReason");
 
 
 const router = express.Router();
@@ -304,13 +305,19 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 
 					if (rawStatus) {
 						const mapped = mapPaycrestStatus(rawStatus);
+						const reason = getPaycrestReason(pcOrder);
 						if (mapped && mapped !== txn.status) {
 							console.log(`🔄 [Status] ${orderId}: ${txn.status} → ${mapped} (PayCrest: ${rawStatus})`);
-							txn.status = mapped;
-							txn.lastPolledAt = new Date();
-							txn.lastPaycrestResponse = pcOrder;
-							await txn.save();
 						}
+						txn.status = mapped || txn.status;
+						txn.lastPolledAt = new Date();
+						txn.lastPaycrestResponse = pcOrder;
+						if (["refunded", "failed", "cancelled", "expired"].includes(mapped)) {
+							console.warn(
+								`[PayCrest] Polled order ${orderId}: status=${mapped}; reason=${reason || "not provided by provider"}`,
+							);
+						}
+						await txn.save();
 					}
 				}
 			} catch (pcErr) {
@@ -329,6 +336,11 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			txn.lastPaycrestResponse?.data || txn.lastPaycrestResponse || {};
 		const storedPaycrestOrder =
 			txn.paycrestData?.data || txn.paycrestData || {};
+		const webhookPayload = txn.lastWebhook?.raw;
+		const failureReason =
+			getPaycrestReason(txn.lastPaycrestResponse) ||
+			getPaycrestReason(webhookPayload) ||
+			getPaycrestReason(storedPaycrestOrder);
 		const fiatAmount =
 			latestPaycrestOrder.amountReceived ??
 			latestPaycrestOrder.fiatAmount ??
@@ -351,6 +363,7 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 			transactionFee: "0",
 			validUntil: txn.validUntil || "",
 			status: txn.status,
+			failureReason,
 			isCompleted,           // 🎯 true once validated/fulfilled/settled
 			updatedAt: txn.updatedAt,
 		});

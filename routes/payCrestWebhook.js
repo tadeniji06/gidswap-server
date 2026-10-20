@@ -5,6 +5,7 @@ const {
 	verifyPaycrestSignature,
 } = require("../utils/paycrestSignature");
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
+const { getPaycrestReason } = require("../utils/getPaycrestReason");
 const {
 	awardPointsForTransaction,
 	awardAffiliateCommission,
@@ -105,10 +106,16 @@ router.post("/paycrest", async (req, res) => {
 		// Use the status from data.status OR fallback to event name
 		const paycrestStatus = data?.status || event;
 		const mappedStatus = mapPaycrestStatus(paycrestStatus);
+		const reason = getPaycrestReason(data);
 
 		console.log(
 			`🔄 Status mapping: "${paycrestStatus}" -> "${mappedStatus}"`,
 		);
+		if (["refunded", "failed", "cancelled", "expired"].includes(mappedStatus)) {
+			console.warn(
+				`[PayCrest] Terminal order ${orderId}: status=${mappedStatus}; reason=${reason || "not provided in webhook"}`,
+			);
+		}
 
 		// 7. Update transaction if status changed
 		if (isOnrampSession) {
@@ -129,7 +136,7 @@ router.post("/paycrest", async (req, res) => {
 				} else if (["failed", "cancelled", "refunded", "expired"].includes(mappedStatus)) {
 					txn.status = "failed";
 					txn.errorStage = "pc";
-					txn.errorMessage = `PayCrest order ${mappedStatus}`;
+					txn.errorMessage = reason || `PayCrest order ${mappedStatus}`;
 				}
 
 				await txn.save();
@@ -143,9 +150,10 @@ router.post("/paycrest", async (req, res) => {
 			});
 		} else {
 			if (txn.status !== mappedStatus) {
+				const previousStatus = txn.status;
 				txn.status = mappedStatus;
 				console.log(
-					`✏️ Updated status from "${txn.status}" to "${mappedStatus}"`,
+					`✏️ Updated status from "${previousStatus}" to "${mappedStatus}"`,
 				);
 			}
 
@@ -154,6 +162,7 @@ router.post("/paycrest", async (req, res) => {
 				receivedAt: new Date(),
 				raw: payload,
 			};
+			txn.lastPaycrestResponse = payload;
 
 			await txn.save();
 
