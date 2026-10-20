@@ -241,11 +241,24 @@ router.get("/status/:orderId", authMiddleware, async (req, res) => {
 		const isCompleted = ["validated", "fulfilled", "settled"].includes(txn.status);
 
 		// ── Step 5: Return unified response ─────────────────────────
+		const latestPaycrestOrder =
+			txn.lastPaycrestResponse?.data || txn.lastPaycrestResponse || {};
+		const storedPaycrestOrder =
+			txn.paycrestData?.data || txn.paycrestData || {};
+		const fiatAmount =
+			latestPaycrestOrder.amountReceived ??
+			latestPaycrestOrder.fiatAmount ??
+			latestPaycrestOrder.providerAccount?.amountToTransfer ??
+			storedPaycrestOrder.amountReceived ??
+			storedPaycrestOrder.fiatAmount ??
+			storedPaycrestOrder.providerAccount?.amountToTransfer ??
+			null;
+
 		return res.status(200).json({
 			id: txn.orderId,
 			reference: txn.reference || txn.orderId,
 			amount: txn.amount?.toString() || "0",
-			fiatAmount: txn.paycrestData?.providerAccount?.amountToTransfer || txn.amount, // Helpful for UI to have both
+			fiatAmount,
 			token: txn.currency || "",
 			network: txn.network || "",
 			receiveAddress: txn.receiveAddress || "",
