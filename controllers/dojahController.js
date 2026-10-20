@@ -1,5 +1,6 @@
 const axios = require("axios");
 const User = require("../models/User");
+const isAdultDateOfBirth = require("../utils/validateAdultDateOfBirth");
 
 const DOJAH_BASE_URL = process.env.DOJAH_BASE_URL;
 const DOJAH_APP_ID = (process.env.DOJAH_APP_ID || "").trim();
@@ -220,8 +221,76 @@ exports.getKYCStatus = async (req, res) => {
 		const user = await User.findById(req.user._id).select("kyc");
 		// Ensure we return a default structure if kyc is undefined (for existing users)
 		const kycData = user.kyc || { status: "unverified", tier: 0 };
-		res.json({ success: true, kyc: kycData });
+		const kycResponse =
+			typeof kycData.toObject === "function"
+				? kycData.toObject()
+				: kycData;
+		const { dateOfBirth, ...publicKycData } = kycResponse;
+		res.json({
+			success: true,
+			kyc: {
+				...publicKycData,
+				hasDateOfBirth: Boolean(dateOfBirth),
+			},
+		});
 	} catch (error) {
 		res.status(500).json({ success: false, error: "Server error" });
+	}
+};
+
+exports.saveDateOfBirth = async (req, res) => {
+	try {
+		const { dateOfBirth, confirmedAccurate } = req.body;
+		if (!isAdultDateOfBirth(dateOfBirth)) {
+			return res.status(400).json({
+				success: false,
+				message: "Enter a valid date of birth showing you are at least 18.",
+			});
+		}
+		if (confirmedAccurate !== true) {
+			return res.status(400).json({
+				success: false,
+				message: "Confirm that your date of birth matches your identity document.",
+			});
+		}
+
+		const user = await User.findById(req.user._id);
+		if (user?.kyc?.status !== "verified") {
+			return res.status(403).json({
+				success: false,
+				code: "KYC_REQUIRED",
+				message: "Complete identity verification before adding your date of birth.",
+			});
+		}
+		if (!user.kyc.bvn && !user.kyc.nin) {
+			return res.status(403).json({
+				success: false,
+				code: "KYC_REQUIRED",
+				message: "Complete identity verification before adding your date of birth.",
+			});
+		}
+		if (
+			user.kyc.dateOfBirth &&
+			user.kyc.dateOfBirth !== dateOfBirth
+		) {
+			return res.status(409).json({
+				success: false,
+				message: "Your date of birth is already saved. Contact support if it needs correction.",
+			});
+		}
+
+		user.kyc.dateOfBirth = dateOfBirth;
+		await user.save();
+
+		return res.json({
+			success: true,
+			kyc: { hasDateOfBirth: true },
+		});
+	} catch (error) {
+		console.error("Save KYC date of birth error:", error.message);
+		return res.status(500).json({
+			success: false,
+			message: "Could not save your date of birth. Please try again.",
+		});
 	}
 };

@@ -12,6 +12,7 @@ const authMiddleware = require("../middlewares/authMiddlewares");
 const axios = require("axios");
 const { mapPaycrestStatus } = require("../utils/mapPaycrestStatus");
 const User = require("../models/User");
+const isAdultDateOfBirth = require("../utils/validateAdultDateOfBirth");
 
 
 const router = express.Router();
@@ -101,30 +102,109 @@ router.post("/init-order", authMiddleware, async (req, res) => {
  */
 router.post("/init-onramp", authMiddleware, async (req, res) => {
 	try {
-		console.log("🚀 Initializing ONRAMP order for user:", req.user._id);
-		console.log(
-			"📩 Payload received:",
-			JSON.stringify(req.body, null, 2),
-		);
+		const { amount, reference, source, destination } = req.body;
+		const user = await User.findById(req.user._id);
+		if (user?.kyc?.status !== "verified") {
+			return res.status(403).json({
+				success: false,
+				code: "KYC_REQUIRED",
+				message: "Complete identity verification before using on-ramp.",
+			});
+		}
+		if (!user.kyc.dateOfBirth) {
+			return res.status(400).json({
+				success: false,
+				code: "DOB_REQUIRED",
+				message: "Add your date of birth to complete KYC before using on-ramp.",
+			});
+		}
+		if (!isAdultDateOfBirth(user.kyc.dateOfBirth)) {
+			return res.status(400).json({
+				success: false,
+				code: "DOB_INVALID",
+				message: "On-ramp is available only to verified users aged 18 or older.",
+			});
+		}
 
+		const identityDocument =
+			user.kyc.method === "nin" && user.kyc.nin
+				? { type: "nationalID", number: user.kyc.nin }
+				: user.kyc.bvn
+					? { type: "BVN", number: user.kyc.bvn }
+					: user.kyc.nin
+						? { type: "nationalID", number: user.kyc.nin }
+						: null;
+		if (
+			!identityDocument ||
+			!/^\d{11}$/.test(identityDocument.number)
+		) {
+			return res.status(403).json({
+				success: false,
+				code: "KYC_REQUIRED",
+				message: "Complete identity verification with a valid BVN or NIN before using on-ramp.",
+			});
+		}
+		if (
+			!amount ||
+			!Number.isFinite(Number(amount)) ||
+			Number(amount) <= 0 ||
+			source?.currency !== "NGN" ||
+			!source?.refundAccount?.institution ||
+			!source?.refundAccount?.accountIdentifier ||
+			typeof source?.refundAccount?.accountName !== "string" ||
+			!source.refundAccount.accountName.trim() ||
+			destination?.type !== "crypto" ||
+			!destination?.currency ||
+			!destination?.recipient?.address ||
+			!destination?.recipient?.network
+		) {
+			return res.status(400).json({
+				success: false,
+				message: "Provide a valid NGN amount, refund account, and crypto destination.",
+			});
+		}
 
-
-		// The payload for onramp expects source.type = "fiat" and destination.type = "crypto"
-		// We'll just pass it down to `initOrder` since Paycrest uses the same `/v2/sender/orders` endpoint
-		const payload = req.body;
+		const personName = source.refundAccount.accountName.trim();
+		const payload = {
+			amount: String(amount),
+			amountIn: "fiat",
+			reference,
+			source: {
+				type: "fiat",
+				currency: "NGN",
+				refundAccount: source.refundAccount,
+				kyc: {
+					entityType: "person",
+					personDetails: {
+						fullName: personName,
+						birthDate: user.kyc.dateOfBirth,
+						idDocument: {
+							type: identityDocument.type,
+							number: identityDocument.number,
+							issuerCountry: "NG",
+						},
+					},
+				},
+			},
+			destination: {
+				type: "crypto",
+				currency: destination.currency,
+				recipient: {
+					address: destination.recipient.address,
+					network: destination.recipient.network,
+				},
+			},
+		};
 
 		// Call Paycrest API via controller
 		const result = await initOrder(payload);
 		const orderData = result?.data;
 
-		console.log("📦 Paycrest onramp response:", orderData);
-
 		if (!orderData?.id) {
-			console.error("❌ Invalid Paycrest response:", result);
+			console.error("Invalid Paycrest onramp response");
 			return res.status(400).json({
 				success: false,
 				message: "Invalid response from Paycrest",
-				result,
 			});
 		}
 
@@ -141,9 +221,9 @@ router.post("/init-onramp", authMiddleware, async (req, res) => {
 			fiatCurrency: payload.source?.currency || "NGN",
 			network: payload.destination?.recipient?.network || orderData.destination?.recipient?.network,
 			receiveAddress: null, // No receive address for onramp (user gets fiat instructions)
-			reference: req.body.reference,
+			reference,
 			validUntil: orderData.providerAccount?.validUntil || orderData.validUntil,
-			paycrestData: orderData, // Store full Paycrest response (contains providerAccount fiat transfer instructions)
+			paycrestData: orderData,
 		});
 
 		await txn.save();
@@ -156,14 +236,18 @@ router.post("/init-onramp", authMiddleware, async (req, res) => {
 			paycrestResponse: result,
 		});
 	} catch (error) {
-		console.error(
-			"❌ Init onramp order error:",
-			error.response?.data || error.message || error,
-		);
-		return res.status(500).json({
+		const providerStatus = error.response?.status;
+		const status = providerStatus >= 400 && providerStatus < 500
+			? providerStatus
+			: 500;
+		const providerMessage = error.response?.data?.message;
+		console.error("Init onramp order error:", providerMessage || error.message);
+		return res.status(status).json({
 			success: false,
-			error: "Internal Server Error",
-			details: error.response?.data || error.message,
+			message:
+				status < 500
+					? providerMessage || "Paycrest could not validate this on-ramp order."
+					: "Could not initialize on-ramp order. Please try again.",
 		});
 	}
 });

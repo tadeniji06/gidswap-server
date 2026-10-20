@@ -14,6 +14,13 @@ router.use(authMiddleware);
 router.get("/status", dojahController.getKYCStatus);
 
 /**
+ * @route   POST /api/kyc/date-of-birth
+ * @desc    Save a verified user's actual date of birth for compliant on-ramp use
+ * @access  Private
+ */
+router.post("/date-of-birth", dojahController.saveDateOfBirth);
+
+/**
  * @route   POST /api/kyc/bvn/validate
  * @desc    Validate BVN details (Name match)
  * @access  Private
